@@ -1,6 +1,8 @@
 # Smart Water System
 
-Standalone irrigation controller that takes over scheduling for a Rachio sprinkler system using your own weather station data, ET-based soil moisture modeling, and multi-day forecasting. Gives you full control over the decision logic that Rachio keeps behind its app.
+Standalone irrigation controller that takes over scheduling for a Rachio sprinkler system using your weather station data plus forecast/archive weather APIs, ET-based soil moisture modeling, and multi-day forecasting. Gives you full control over the decision logic that Rachio keeps behind its app.
+
+This repo is a working homelab-oriented controller, not a polished SaaS product. The core decision engine, weather fallback logic, status page, MQTT publishing, watchdog, and summary job are implemented. A few ideas in the codebase are still groundwork rather than finished features, and those are called out explicitly below.
 
 ## How It Works
 
@@ -21,7 +23,7 @@ flowchart LR
     VERIFY --> DB
 
     TIMER(["Hourly\nsystemd timer"]) -.-> DECIDE
-    PHONE(["Water Now\nn8n webhook"]) -.-> DECIDE
+    PHONE(["Manual Trigger\nCLI / webhook"]) -.-> DECIDE
 
     style DECIDE fill:#e65100,stroke:#bf360c,color:#fff
     style RAIN fill:#1565c0,stroke:#0d47a1,color:#fff
@@ -39,9 +41,9 @@ flowchart LR
 
 Every hour, the system checks whether your lawn needs water by running a five-stage decision pipeline:
 
-1. **Safety** - Skip if wind is too high, it rained recently, or temps are below freezing
-2. **Forecast** - Skip if significant rain is predicted in the next 24 hours
-3. **Soil moisture** - Calculate per-zone water deficit using evapotranspiration (ET) modeling with data from your personal weather station
+1. **Safety** - Skip if wind is too high, it rained recently, or temperatures are below the configured floor
+2. **Forecast** - Skip if forecast rainfall exceeds the configured threshold
+3. **Soil moisture** - Calculate per-zone water deficit using evapotranspiration (ET) modeling driven by archived, forecast, and live weather inputs
 4. **Budget** - Enforce daily gallon and cost limits based on your tiered water rates
 5. **Scheduling** - Build an optimized run with smart soak cycles for clay soil infiltration
 
@@ -49,7 +51,7 @@ If watering is needed, a final real-time rain check confirms it's not actively r
 
 ## Rachio's Problems, Our Solutions
 
-Rachio 3 includes solid smart watering at no recurring cost. Flex Daily, Weather Intelligence, Cycle and Soak, and PWS support are all free. But the community has documented persistent, reproducible failures across every major feature. This system was designed to address each one specifically.
+This project is aimed at homeowners who want an inspectable, self-hosted decision engine for common smart-irrigation pain points: stale weather data, opaque skip decisions, cloud dependency, and limited observability. The sections below describe what this repo actually does today.
 
 ### "It watered during a thunderstorm"
 
@@ -61,13 +63,13 @@ Rachio 3 includes solid smart watering at no recurring cost. Flex Daily, Weather
 
 **The Rachio problem:** Rachio 3 routes weather data through Aeris Weather, which aggregates from CWOP, PWSWeather, and Weather Underground networks. Users report significant precipitation discrepancies between what their personal station measures and what Rachio records. There's no way to see the discrepancy or know which data source Rachio actually used. One user documented Rachio showing 0.14" for a day when local flood control confirmed 0.35".
 
-**Our solution:** Every day, the system cross-validates precipitation readings between your Ambient Weather station and OpenMeteo's archive data. Discrepancies exceeding 0.15" are logged to a `weather_discrepancy` table with both values and what was used. The daily summary email flags persistent bias - if one source consistently reads higher or lower over 7 days, it alerts you to check your rain gauge for debris or calibration drift. You can query exactly what data drove every decision.
+**Our solution:** Every day, the system cross-validates precipitation readings between your Ambient Weather station and OpenMeteo's archive data. Discrepancies exceeding 0.15" are logged to a `weather_discrepancy` table with both values and what was used. The daily summary job also highlights repeated high-discrepancy days so you can investigate rain gauge drift or source mismatch. You can query exactly what data drove every decision.
 
 ### "My station went offline and Rachio never told me"
 
 **The Rachio problem:** When a nearby personal weather station goes offline, Rachio silently falls back to more distant stations or interpolated grid data. There is no notification. Users discover weeks later that their "hyperlocal" 36-foot-resolution data was actually coming from a station miles away with different microclimate conditions. The system continues making decisions on degraded data without any indication.
 
-**Our solution:** Escalating alerts fire the moment your Ambient Weather station stops responding: informational at 4 hours, warning at 12 hours, critical at 24 hours. Each alert includes what fallback source is being used (OpenMeteo forecast vs conservative defaults). The system never silently degrades. The daily summary email always shows the current weather data source and its freshness. If all sources go down during growing season, the system uses conservative defaults (85F, 30% humidity, no rain) and waters anyway rather than skipping.
+**Our solution:** On each run, the controller checks how old the last Ambient Weather reading is. Once the cache age crosses 4 hours, 12 hours, and 24 hours, it escalates alerts and tells you whether it is falling back to OpenMeteo data or conservative defaults. The daily summary also reports the active weather source and its freshness. If all weather sources are unavailable, the controller falls back to conservative current-condition defaults instead of crashing or silently stopping decisions.
 
 ### "Flex Daily went 8 days without watering in 100-degree heat"
 
@@ -76,7 +78,7 @@ Rachio 3 includes solid smart watering at no recurring cost. Flex Daily, Weather
 **Our solution:** Three layers of protection:
 - **Emergency cooling** with dynamic temperature triggers that adjust based on solar radiation, humidity, and wind - not just air temperature. When conditions are genuinely dangerous for turf, the system waters regardless of what the daily schedule decided.
 - **Degraded-mode policy** that never skips watering in summer because a data source is unavailable. If your weather station and forecast APIs both go down during a heat wave, conservative defaults ensure watering continues.
-- **Adaptive zone tuning** that tracks whether predicted soil moisture matches reality over time. If a zone consistently hits its trigger point faster than the model predicts, the system suggests ET correction factors. Over weeks, the model self-corrects rather than drifting.
+- **Tuning scaffolding** for future model calibration. Today the implemented tuning path is flow-based suggestion logging; ET correction storage exists, but automatic ET drift analysis is not finished yet.
 
 ### "Cycle and Soak activated on some zones but not others"
 
@@ -88,26 +90,21 @@ Rachio 3 includes solid smart watering at no recurring cost. Flex Daily, Weather
 
 **The Rachio problem:** The app shows what happened (watered zone 3 for 25 minutes) but not why. Users can't determine whether a run was triggered by ET deficit, proactive forecast logic, or schedule. When the system skips, the reason shown is often generic ("Saturation Skip") even when the yard is visibly dry.
 
-**Our solution:** Every decision is logged across three phases (DECIDE, COMMAND, VERIFY) with full context:
-- Which zones needed water and how much deficit each had in inches
-- What temperature and weather data was used (and from which source)
-- Why other zones were skipped (full soil, fertilizer guard, budget limit)
-- Whether the forecast influenced the decision and what it predicted
-- The exact cost calculation including billing tier position
+**Our solution:** Every run is logged across three phases (DECIDE, COMMAND, VERIFY) so you can tell whether the system chose to water, whether the command was sent, and whether Rachio accepted it. The logs include the decision reason, selected zones, gallons, cost totals, success/failure state, and any command error message. You can query it with `node src/cli.js status --json` or browse the SQLite database directly.
 
-Query it with `node src/cli.js status --json` or browse the SQLite database directly. The daily summary email gives you the overnight recap without needing to touch a terminal.
+The daily summary job gives you the overnight recap without needing to touch a terminal.
 
 ### "If my internet goes down, I lose all control"
 
-**The Rachio problem:** No local control path. All schedule creation, modification, and manual triggering requires an active internet connection and reachable Rachio cloud servers. Rain Bird acquired Rachio in October 2025, and the community has drawn direct comparisons to Google's Nest acquisition where features and integrations were progressively deprecated.
+**The Rachio problem:** No local decision path. All schedule creation, modification, and manual triggering still depend on reachable Rachio cloud services.
 
-**Our solution:** The decision engine runs entirely on your own hardware. SQLite stores all state locally. The only cloud dependencies are the weather APIs (with multi-level fallbacks including fully offline conservative defaults) and the Rachio API (for sending commands to the physical controller). If Rain Bird deprecates the Rachio cloud, your decision engine, all historical data, and every tuning parameter remain intact on your server. MQTT integration publishes state to your local Home Assistant instance, giving you dashboards and automations that work without any cloud service.
+**Our solution:** The decision engine runs on your own hardware, and SQLite stores all state locally. Weather inputs have fallback behavior, and the status/MQTT/history surfaces remain available locally. You still need the Rachio cloud API to actuate the controller, but the scheduling logic, history, and tuning state are yours.
 
 ### "I don't know my precipitation rates and I'm not doing catch cup tests"
 
 **The Rachio problem:** Flex Daily's accuracy depends heavily on correct precipitation rate calibration for each zone. Most users never do catch cup tests, so the model runs on default values from day one. This is the #1 setup barrier and the primary reason Flex Daily produces absurd schedules (20-hour runs, week-long gaps) for many users.
 
-**Our solution:** If you install an EveryDrop flow meter (or any flow meter that reports through Rachio's API), the system compares expected gallons (from your configured precipitation rate and zone area) against actual gallons measured by the meter after every run. When deviation exceeds 15% over 5+ runs, it surfaces a calibration suggestion in the daily summary. Over 20+ runs, it can auto-adjust within safe bounds (80%-120% of configured values). The system gets more accurate over time instead of running on wrong assumptions forever.
+**Current state in this repo:** The database tables and suggestion logic for flow-based calibration are present, but end-to-end flow audit collection is not wired into the main run loop yet. In other words: this repo lays the groundwork for flow-assisted calibration, but you should treat that part as incomplete rather than production-ready.
 
 ## Key Features
 
@@ -115,9 +112,9 @@ Query it with `node src/cli.js status --json` or browse the SQLite database dire
 
 **Decision-Command-Verify.** Every watering run is logged in three phases. The decision is recorded before any command is sent. If Rachio rejects the command or doesn't respond, state is not corrupted. The watchdog catches silent failures.
 
-**Daily summary email.** Morning report at 6am with overnight activity (what ran and why), current soil moisture per zone with color-coded bars, today's forecast, whether emergency cooling is likely, weather source status, month-to-date cost, and any sensor discrepancy warnings.
+**Daily summary job.** A 6am systemd timer generates an HTML morning report with overnight activity, current soil moisture per zone, today's forecast, weather source status, month-to-date cost, and discrepancy warnings. If `N8N_WEBHOOK_URL` is configured, the report is posted to the `/summary` webhook for delivery.
 
-**Status page.** A static HTML page regenerated after every run with mobile-friendly layout. Soil moisture bars, forecast cards, recent decisions, and cost tracking. Served via n8n webhook or any file server - no JavaScript framework needed.
+**Status page.** A static HTML file regenerated after every run, written to `~/.smart-water/status.html` by default. It includes soil moisture bars, forecast cards, recent decisions, and cost tracking. You can serve that file however you want; no JavaScript framework is required.
 
 <img src="docs/dashboard-preview.png" alt="Smart Water System Dashboard" width="400">
 
@@ -125,9 +122,15 @@ Query it with `node src/cli.js status --json` or browse the SQLite database dire
 
 **Home Assistant integration.** Publishes retained MQTT messages after every run: per-zone moisture percentages, weather data with source, daily/monthly cost, and last decision. HA auto-discovery creates sensor entities automatically. Uses your existing MQTT broker.
 
-**Watchdog.** A separate systemd timer runs at 2am. If no successful run completed in the past 24 hours during growing season, it sends an alert via n8n webhook. Catches systemd failures, script crashes, and Rachio API outages.
+**Watchdog.** A separate systemd timer runs at 2am. If no healthy run outcome completed in the past 24 hours during growing season, it sends an alert via the notification webhook path.
 
-**Dormant fallback.** A basic fixed schedule stays configured in the Rachio app on standby. If the homelab goes down entirely, manually activating this schedule provides emergency coverage.
+## Current Limitations
+
+- Rachio cloud access is still required to start watering runs.
+- Notification delivery and summary delivery currently go through n8n-style webhooks; built-in SMTP delivery is not implemented.
+- Flow-meter-assisted calibration is scaffolded but not fully wired into the main execution loop.
+- ET correction factors can be stored and read, but automatic ET drift analysis is not complete yet.
+- The test suite now covers core logic plus a few integration edges, but it is still not a substitute for a live smoke test against your own Rachio account, MQTT broker, and timers.
 
 ## Project Structure
 
@@ -137,9 +140,9 @@ src/
   config.js            Configuration with env var support
   weather.js           Weather coordinator with cross-validation and fallback
   watchdog.js          Missed-run alert checker
-  summary.js           Daily email report generator
+  summary.js           Daily HTML summary generator
   status-page.js       Static HTML status page generator
-  notify.js            Notification dispatch (n8n webhook)
+  notify.js            Notification dispatch (webhook delivery)
   mqtt.js              MQTT publisher for Home Assistant
   time.js              Local timezone helpers (America/Denver)
   log.js               Structured logger for systemd journal
@@ -157,10 +160,10 @@ src/
     openmeteo.js       OpenMeteo API client (archive + forecast)
     http.js            Shared fetch with retry and timeout
   db/
-    schema.sql         SQLite table definitions (11 tables)
+    schema.sql         SQLite table definitions (12 tables)
     state.js           All database read/write operations
 zones.yaml             Zone configuration (edit this for your yard)
-tests/                 34 tests covering core logic
+tests/                 42 tests covering core logic and selected integration paths
 deploy/
   smart-water.service  systemd oneshot service
   smart-water.timer    Hourly timer
@@ -177,7 +180,7 @@ deploy/
 - Rachio irrigation controller (any model with API access)
 - Ambient Weather station (optional but recommended)
 - systemd (for scheduling)
-- n8n (optional, for notifications and manual triggers)
+- n8n or another webhook receiver (optional, for notifications and summary delivery)
 - MQTT broker (optional, for Home Assistant)
 
 ## Setup
@@ -226,3 +229,11 @@ journalctl -u smart-water -f
 - **System settings:** `src/config.js` - thresholds, rates, schedule windows, emergency triggers
 - **Secrets:** `~/.smart-water/.env` - API keys, MQTT broker, notification webhook
 - **See** `.env.example` for all available environment variables
+
+## Community
+
+- Questions and setup help: GitHub Discussions
+- Bugs and feature requests: GitHub Issues
+- Contribution guide: `CONTRIBUTING.md`
+- Security reporting: `SECURITY.md`
+- Project license: MIT (`LICENSE`)

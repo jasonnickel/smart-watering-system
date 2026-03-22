@@ -2,8 +2,31 @@
   "name": "smart-water",
   "version": "1.0.0",
   "description": "Intelligent irrigation controller for Rachio - ET-based soil moisture management",
+  "license": "MIT",
   "type": "module",
   "main": "src/cli.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jasonnickel/smart-watering-system.git"
+  },
+  "homepage": "https://github.com/jasonnickel/smart-watering-system#readme",
+  "bugs": {
+    "url": "https://github.com/jasonnickel/smart-watering-system/issues"
+  },
+  "keywords": [
+    "rachio",
+    "irrigation",
+    "smart-irrigation",
+    "home-assistant",
+    "mqtt",
+    "ambient-weather",
+    "open-meteo",
+    "soil-moisture",
+    "evapotranspiration",
+    "homelab",
+    "systemd",
+    "water-conservation"
+  ],
   "bin": {
     "smart-water": "src/cli.js"
   },

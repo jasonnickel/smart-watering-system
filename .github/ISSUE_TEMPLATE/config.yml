@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions and setup help
+    url: https://github.com/jasonnickel/smart-watering-system/discussions
+    about: Use Discussions for questions, integration help, and design conversations.
+  - name: Security report
+    url: https://github.com/jasonnickel/smart-watering-system/security/policy
+    about: Please report vulnerabilities through the private security path.

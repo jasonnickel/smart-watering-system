@@ -1,0 +1,40 @@
+name: Feature request
+description: Suggest a focused improvement
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem to solve
+      description: What pain point are you trying to solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe the change you want to see.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What workarounds or alternative approaches have you tried?
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Decision engine
+        - Weather handling
+        - Rachio integration
+        - Home Assistant / MQTT
+        - Notifications / summary
+        - Deployment / systemd
+        - Docs / onboarding
+        - Tests / tooling
+    validations:
+      required: true
