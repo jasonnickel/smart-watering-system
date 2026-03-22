@@ -213,28 +213,36 @@ git clone https://github.com/jasonnickel/smart-watering-system.git ~/smart-water
 cd ~/smart-water
 npm install --production
 
-# Configure
-mkdir -p ~/.smart-water
-cp .env.example ~/.smart-water/.env
-chmod 600 ~/.smart-water/.env
-# Edit ~/.smart-water/.env with your API keys
-# Edit zones.yaml with your zone areas, sun exposure, and soil profiles
+# Interactive setup (asks for API keys, writes config for you)
+node src/cli.js setup
 
-# Test in shadow mode
+# Verify everything is connected
+node src/cli.js doctor
+
+# Test in shadow mode (default - logs decisions, doesn't actuate)
 node src/cli.js run --shadow
 
-# Check status
-node src/cli.js status
-node src/cli.js status --json   # machine-readable for n8n
-
-# Install systemd timers
+# Install systemd timers for automatic scheduling
 bash deploy/install.sh
+
+# After a week of shadow runs, go live
+node src/cli.js go-live
 
 # View logs
 journalctl -u smart-water -f
 ```
 
 ## Commands
+
+**Getting started:**
+
+| Command | Description |
+|---------|-------------|
+| `node src/cli.js setup` | Interactive wizard - configures API keys and zones |
+| `node src/cli.js doctor` | Check system health, connectivity, and recent activity |
+| `node src/cli.js go-live` | Safety-checked switch from shadow to live mode |
+
+**Daily operations:**
 
 | Command | Description |
 |---------|-------------|
