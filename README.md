@@ -140,11 +140,15 @@ The daily summary job gives you the overnight recap without needing to touch a t
 
 <img src="docs/dashboard-preview.png" alt="Smart Water System Dashboard" width="400">
 
+**Optional guided web UI.** The local browser UI now supports guided setup, guided zone editing, optional password protection, and safer quick actions, while still keeping the original raw env/YAML editors and CLI workflow available for coders.
+
 **YAML zone config.** Zone profiles live in a documented `zones.yaml` file instead of buried in source code. Comments explain what each field means and how to measure it. Edit your zone areas, sun exposure, and soil profiles without touching JavaScript.
 
 **Home Assistant integration.** Publishes retained MQTT messages after every run: per-zone moisture percentages, weather data with source, daily/monthly cost, and last decision. HA auto-discovery creates sensor entities automatically. Uses your existing MQTT broker.
 
 **Watchdog.** A separate systemd timer runs at 2am. If no healthy run outcome completed in the past 24 hours during growing season, it sends an alert via the notification webhook path.
+
+**Optional live smoke test.** Once you intentionally leave shadow mode, you can run a short one-zone commissioning test through `smart-water smoke-test` or the browser UI. It uses the same command path and logging as a real watering run.
 
 ## Current Limitations
 
@@ -219,6 +223,12 @@ node src/cli.js setup
 # Verify everything is connected
 node src/cli.js doctor
 
+# Optional: open the local browser UI at http://127.0.0.1:3000
+node src/cli.js web
+
+# Optional: run browser-first setup and guided editors
+# (the CLI and raw files still work if you prefer them)
+
 # Test in shadow mode (default - logs decisions, doesn't actuate)
 node src/cli.js run --shadow
 
@@ -227,6 +237,9 @@ bash deploy/install.sh
 
 # After a week of shadow runs, go live
 node src/cli.js go-live
+
+# Optional: run one short live smoke test on a single zone
+node src/cli.js smoke-test --zone 1 --minutes 1
 
 # View logs
 journalctl -u smart-water -f
@@ -241,6 +254,8 @@ journalctl -u smart-water -f
 | `node src/cli.js setup` | Interactive wizard - configures API keys and zones |
 | `node src/cli.js doctor` | Check system health, connectivity, and recent activity |
 | `node src/cli.js go-live` | Safety-checked switch from shadow to live mode |
+| `node src/cli.js shadow` | Force the system back into shadow mode |
+| `node src/cli.js smoke-test --zone 1 --minutes 1` | Optional short live commissioning test for one zone |
 
 **Daily operations:**
 
@@ -251,13 +266,15 @@ journalctl -u smart-water -f
 | `node src/cli.js water` | Manual watering (overrides forecast/budget, respects safety) |
 | `node src/cli.js status` | Current moisture, usage, and last run |
 | `node src/cli.js status --json` | Machine-readable status for n8n/scripts |
+| `node src/cli.js web` | Local browser UI for status, run history, guided setup, zones, and settings |
 | `node src/cli.js cleanup` | Remove data older than 90 days |
 
 ## Configuration
 
 - **Zone profiles:** Edit `zones.yaml` - documented YAML with comments explaining each field
 - **System settings:** `src/config.js` - thresholds, rates, schedule windows, emergency triggers
-- **Secrets:** `~/.smart-water/.env` - API keys, MQTT broker, notification webhook
+- **Secrets and location:** `~/.smart-water/.env` - API keys, MQTT broker, notification webhook, `LAT`, `LON`, `LOCATION_TIMEZONE`
+- **Optional web auth:** set `WEB_UI_PASSWORD` and restart the web UI if you want browser sign-in on top of localhost binding
 - **See** `.env.example` for all available environment variables
 
 ## Community

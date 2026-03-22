@@ -13,8 +13,11 @@
 import './env.js';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
+import { createInterface } from 'node:readline/promises';
+import { stdin as input, stdout as output } from 'node:process';
 
 import CONFIG from './config.js';
+import { getEnvFilePath, writeEnvValue } from './env.js';
 import { log } from './log.js';
 import { localDateStr, localYesterdayStr, localHour, localMonth } from './time.js';
 import {
@@ -78,6 +81,12 @@ async function main() {
     case 'go-live':
       await runGoLive();
       return;
+    case 'shadow':
+      enableShadowMode();
+      return;
+    case 'smoke-test':
+      await runSmokeTest(flags);
+      break;
     default:
       console.log('');
       console.log('  Smart Water System');
@@ -88,12 +97,14 @@ async function main() {
       console.log('    setup          Configure API keys and zones interactively');
       console.log('    doctor         Check system health and connectivity');
       console.log('    go-live        Switch from shadow mode to live mode');
+      console.log('    shadow         Force the system back into shadow mode');
+      console.log('    smoke-test     Run one short live commissioning test on a single zone');
       console.log('');
       console.log('  Daily operations:');
       console.log('    run [--shadow] Run the hourly decision cycle');
       console.log('    water          Manual watering trigger');
       console.log('    status [--json] Show current system status');
-      console.log('    web            Start the browser-based UI (port 3000)');
+      console.log('    web            Start the browser-based UI (127.0.0.1:3000)');
       console.log('    cleanup        Remove data older than 90 days');
       console.log('');
       process.exit(command === 'help' || command === '--help' ? 0 : 1);
@@ -102,6 +113,92 @@ async function main() {
   // [FIX P1] Exit nonzero when command/verify failed so watchdog catches it
   if (commandFailed) {
     process.exit(2);
+  }
+}
+
+function enableShadowMode() {
+  const envPath = getEnvFilePath();
+  writeEnvValue('SHADOW_MODE', 'true');
+  console.log(`Shadow mode enabled. Updated ${envPath}`);
+}
+
+function getFlagValue(flags, name) {
+  const index = flags.indexOf(name);
+  if (index === -1 || index === flags.length - 1) {
+    return '';
+  }
+  return flags[index + 1];
+}
+
+async function confirmAction(question) {
+  const rl = createInterface({ input, output });
+  try {
+    const answer = await rl.question(`${question} (y/n): `);
+    return answer.trim().toLowerCase() === 'y';
+  } finally {
+    rl.close();
+  }
+}
+
+async function runSmokeTest(flags) {
+  if (CONFIG.system.shadowMode) {
+    console.log('Smoke test requires live mode. Run smart-water go-live first, then re-run this command.');
+    return;
+  }
+
+  const zoneNumber = parseInt(getFlagValue(flags, '--zone'), 10);
+  const minutes = parseInt(getFlagValue(flags, '--minutes') || '1', 10);
+  const skipPrompt = flags.includes('--yes');
+
+  if (!Number.isFinite(zoneNumber) || zoneNumber <= 0) {
+    console.log('Usage: smart-water smoke-test --zone <number> [--minutes 1-3] [--yes]');
+    process.exit(1);
+  }
+  if (!Number.isFinite(minutes) || minutes < 1 || minutes > 3) {
+    console.log('Smoke test duration must be between 1 and 3 minutes.');
+    process.exit(1);
+  }
+
+  if (!skipPrompt) {
+    const confirmed = await confirmAction(`Start a live smoke test on zone ${zoneNumber} for ${minutes} minute(s)? This will actuate your Rachio controller.`);
+    if (!confirmed) {
+      console.log('Smoke test cancelled.');
+      return;
+    }
+  }
+
+  if (!acquireRunLock()) {
+    log(1, 'Another run is in progress, exiting');
+    return;
+  }
+
+  try {
+    const enabledZones = (await getZones()).filter(zone => zone.enabled !== false);
+    const profiles = buildProfiles(enabledZones);
+    const profile = profiles.find(item => item.zoneNumber === zoneNumber);
+
+    if (!profile) {
+      console.log(`Zone ${zoneNumber} is not configured or is not enabled on Rachio.`);
+      process.exit(1);
+    }
+
+    const finance = getFinanceData();
+    const gallons = profile.gallonsPerMinute * minutes;
+    const cost = calculateCost(gallons, finance.cumulative_gallons);
+
+    const plan = {
+      decision: 'WATER',
+      reason: `Live smoke test - Zone ${zoneNumber} (${profile.name}) for ${minutes} minute(s)`,
+      zones: [{ id: profile.id, name: profile.name, duration: minutes, priority: profile.priority }],
+      originalZones: [{ id: profile.id, name: profile.name, duration: minutes, gallons, priority: profile.priority, profile }],
+      gallons,
+      cost,
+    };
+
+    log(1, `Starting smoke test for zone ${zoneNumber} (${profile.name}) for ${minutes} minute(s)`);
+    await executePlan(plan, 'smoke-test', false);
+  } finally {
+    releaseRunLock();
   }
 }
 

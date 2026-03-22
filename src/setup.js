@@ -75,17 +75,21 @@ export async function runSetup() {
 
   // --- Notifications ---
   console.log(`\n${BOLD}3. Notifications${RESET}`);
+  console.log(`${DIM}Notifications currently go through an optional webhook receiver such as n8n.${RESET}`);
   const webhookUrl = await ask('n8n webhook URL (or leave blank to skip)');
-  const email = await ask('Notification email address');
+  const email = await ask('Notification email address (optional, for your webhook flow)');
 
   // --- Location ---
   console.log(`\n${BOLD}4. Location${RESET}`);
-  console.log(`${DIM}Used for weather forecasts and timezone. Default is Denver, CO.${RESET}`);
+  console.log(`${DIM}Used for forecast queries and local scheduling. Default is Denver, CO.${RESET}`);
   const changeLoc = await confirm('Change location from Denver, CO?');
-  let lat = '39.73220', lon = '-105.21940';
+  let lat = '39.73220';
+  let lon = '-105.21940';
+  let timezone = 'America/Denver';
   if (changeLoc) {
     lat = await ask('Latitude', '39.73220');
     lon = await ask('Longitude', '-105.21940');
+    timezone = await ask('Timezone', 'America/Denver');
   }
 
   // --- MQTT ---
@@ -130,9 +134,10 @@ export async function runSetup() {
     `DEBUG_LEVEL=${debugLevel}`,
     'SHADOW_MODE=true',
     '',
-    '# Location (used if you override config.js)',
-    `# LAT=${lat}`,
-    `# LON=${lon}`,
+    '# Location',
+    `LAT=${lat}`,
+    `LON=${lon}`,
+    `LOCATION_TIMEZONE=${timezone}`,
   ].join('\n') + '\n';
 
   writeFileSync(ENV_PATH, envContent, { mode: 0o600 });

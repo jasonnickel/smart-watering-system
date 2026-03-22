@@ -4,14 +4,17 @@
 
 import './env.js';
 import CONFIG from './config.js';
-import { log } from './log.js';
 import { localDateStr } from './time.js';
-import { initDB, getStatus, getRunsSince, getSystemState } from './db/state.js';
+import { initDB, getStatus, getRunsSince } from './db/state.js';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { existsSync } from 'node:fs';
+import { getEnvFilePath, readShadowMode } from './env.js';
 
 const DB_PATH = process.env.DB_PATH || join(homedir(), '.smart-water', 'smart-water.db');
+const APP_ROOT = join(import.meta.dirname, '..');
+const APP_ZONES_PATH = join(APP_ROOT, 'zones.yaml');
+const HOME_ZONES_PATH = join(homedir(), '.smart-water', 'zones.yaml');
 
 const GREEN = '\x1b[32m';
 const YELLOW = '\x1b[33m';
@@ -23,6 +26,7 @@ const DIM = '\x1b[2m';
 function ok(label, detail) { console.log(`  ${GREEN}OK${RESET}  ${label}${detail ? `  ${DIM}${detail}${RESET}` : ''}`); }
 function warn(label, detail) { console.log(`  ${YELLOW}!!${RESET}  ${label}${detail ? `  ${DIM}${detail}${RESET}` : ''}`); }
 function fail(label, detail) { console.log(`  ${RED}FAIL${RESET}  ${label}${detail ? `  ${DIM}${detail}${RESET}` : ''}`); }
+function info(label, detail) { console.log(`  ${DIM}--${RESET}  ${label}${detail ? `  ${DIM}${detail}${RESET}` : ''}`); }
 
 let issues = 0;
 let warnings = 0;
@@ -77,12 +81,9 @@ export async function runDoctor() {
 }
 
 function checkEnvFile() {
-  const envPath = join(homedir(), '.smart-water', '.env');
-  const projectEnv = join(process.cwd(), '.env');
+  const envPath = getEnvFilePath();
   if (existsSync(envPath)) {
     ok('Environment file', envPath);
-  } else if (existsSync(projectEnv)) {
-    ok('Environment file', projectEnv);
   } else {
     fail('No .env file found', 'Run: smart-water setup');
     issues++;
@@ -125,12 +126,10 @@ function checkApiKeys() {
 }
 
 function checkZonesConfig() {
-  const zonesPath = join(process.cwd(), 'zones.yaml');
-  const homeZones = join(homedir(), '.smart-water', 'zones.yaml');
-  if (existsSync(zonesPath)) {
+  if (existsSync(APP_ZONES_PATH)) {
     const zoneCount = Object.keys(CONFIG.watering.zoneProfiles).length;
     ok('Zone config', `${zoneCount} zones from zones.yaml`);
-  } else if (existsSync(homeZones)) {
+  } else if (existsSync(HOME_ZONES_PATH)) {
     ok('Zone config', 'from ~/.smart-water/zones.yaml');
   } else {
     ok('Zone config', 'using defaults from config.js');
@@ -217,10 +216,7 @@ function checkDatabase() {
 }
 
 function checkMode() {
-  const shadow = CONFIG.system.shadowMode;
-  const envShadow = process.env.SHADOW_MODE === 'true';
-
-  if (shadow || envShadow) {
+  if (readShadowMode()) {
     warn('Shadow mode is ON', 'decisions are logged but Rachio will not be actuated');
     console.log(`       ${DIM}To go live: smart-water go-live${RESET}`);
   } else {
@@ -231,15 +227,14 @@ function checkMode() {
   if (process.env.MQTT_BROKER_URL) {
     ok('MQTT', process.env.MQTT_BROKER_URL);
   } else {
-    console.log(`  ${DIM}--${RESET}  MQTT  ${DIM}not configured (optional)${RESET}`);
+    info('MQTT', 'not configured (optional)');
   }
 
   // Check notifications
   if (process.env.N8N_WEBHOOK_URL) {
     ok('Notifications', 'via n8n webhook');
   } else {
-    warn('Notifications', 'no N8N_WEBHOOK_URL - alerts will only appear in logs');
-    warnings++;
+    info('Notifications', 'not configured - alerts remain in logs only');
   }
 }
 
