@@ -1,6 +1,8 @@
 // Simple structured logger
 // Writes to stdout for systemd journal capture
 
+import './env.js';
+
 const LEVEL = parseInt(process.env.DEBUG_LEVEL || '1', 10);
 
 /**

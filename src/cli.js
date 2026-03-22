@@ -10,15 +10,9 @@
 //   smart-water status --json     Machine-readable status for n8n
 //   smart-water cleanup           Remove old data beyond retention period
 
-import { config as loadEnv } from 'dotenv';
+import './env.js';
 import { join } from 'node:path';
-import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
-
-// Load .env from project dir or ~/.smart-water/
-const projectEnv = join(import.meta.dirname, '..', '.env');
-const homeEnv = join(homedir(), '.smart-water', '.env');
-loadEnv({ path: existsSync(projectEnv) ? projectEnv : homeEnv });
 
 import CONFIG from './config.js';
 import { log } from './log.js';

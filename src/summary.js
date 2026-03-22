@@ -4,14 +4,9 @@
 // Generates and sends a morning status report.
 // Run at 6am via systemd timer.
 
-import { config as loadEnv } from 'dotenv';
+import './env.js';
 import { join } from 'node:path';
-import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
-
-const projectEnv = join(import.meta.dirname, '..', '.env');
-const homeEnv = join(homedir(), '.smart-water', '.env');
-loadEnv({ path: existsSync(projectEnv) ? projectEnv : homeEnv });
 
 import CONFIG from './config.js';
 import { log } from './log.js';

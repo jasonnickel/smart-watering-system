@@ -2,6 +2,7 @@
 // Publishes system state to MQTT topics after each run.
 // Uses retain flag so HA gets current state on restart.
 
+import './env.js';
 import { log } from './log.js';
 
 const BROKER_URL = process.env.MQTT_BROKER_URL;

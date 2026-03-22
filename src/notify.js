@@ -2,6 +2,7 @@
 // Sends alerts via n8n webhook (preferred) or logs for systemd journal pickup.
 // SMTP via nodemailer can be added later if needed.
 
+import './env.js';
 import { log } from './log.js';
 
 const WEBHOOK_URL = process.env.N8N_WEBHOOK_URL;

@@ -1,6 +1,7 @@
 // [2.3] Static HTML status page generator
 // Regenerated after each run. Served by n8n or any file server.
 
+import './env.js';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';

@@ -2,6 +2,7 @@
 // Zone profiles, thresholds, and rates live here. Secrets come from .env.
 // [3.1] Zone profiles can be overridden by zones.yaml.
 
+import './env.js';
 import { loadZoneConfig } from './yaml-loader.js';
 
 const CONFIG = {

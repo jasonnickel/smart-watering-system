@@ -6,14 +6,9 @@
 // [FIX P1] Checks for successful terminal outcomes, not just DECIDE phase.
 // A run that decided to WATER but failed at COMMAND is not healthy.
 
-import { config as loadEnv } from 'dotenv';
+import './env.js';
 import { join } from 'node:path';
-import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
-
-const projectEnv = join(import.meta.dirname, '..', '.env');
-const homeEnv = join(homedir(), '.smart-water', '.env');
-loadEnv({ path: existsSync(projectEnv) ? projectEnv : homeEnv });
 
 import CONFIG from './config.js';
 import { log } from './log.js';
