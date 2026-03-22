@@ -2,6 +2,85 @@
 
 Standalone irrigation controller that manages a Rachio sprinkler system using local weather station data, scientific soil moisture modeling, and multi-day forecasting. Replaces Rachio's paid Weather Intelligence features with more accurate, hyper-local decision making.
 
+## System Overview
+
+```mermaid
+flowchart TB
+    subgraph DATA["Data Sources"]
+        AMB["Ambient Weather Station\n(your yard)"]
+        OMF["OpenMeteo Forecast\n(4-day predictions)"]
+        OMA["OpenMeteo Archive\n(yesterday's weather)"]
+        SQL[("SQLite\n(soil moisture, finance,\nrun history)")]
+    end
+
+    subgraph DECIDE["Decision Engine (5 stages)"]
+        direction TB
+        S1{"1. Safety\nWind / Rain / Freeze?"}
+        S2{"2. Forecast\nRain predicted?"}
+        S3{"3. Soil Moisture\nET deficit per zone?"}
+        S4{"4. Budget\nGallon / cost limit?"}
+        S5["5. Schedule\nSoak cycles + priority"]
+        S1 -->|safe| S2
+        S1 -->|unsafe| SKIP
+        S2 -->|dry forecast| S3
+        S2 -->|rain coming| SKIP
+        S3 -->|zones need water| S4
+        S3 -->|all zones OK| SKIP
+        S4 -->|within budget| S5
+        S4 -->|over limit| SKIP
+    end
+
+    subgraph EXECUTE["Execution"]
+        CMD["COMMAND\nSend to Rachio API"]
+        VER["VERIFY\nConfirm accepted"]
+        UPD["UPDATE STATE\nSoil moisture + finance"]
+    end
+
+    SKIP["SKIP\n(log reason)"]
+
+    AMB --> DECIDE
+    OMF --> DECIDE
+    OMA --> DECIDE
+    SQL --> DECIDE
+    S5 --> CMD
+    CMD --> VER
+    VER --> UPD
+    UPD --> SQL
+
+    subgraph INFRA["Infrastructure"]
+        TIMER["systemd timer\n(hourly)"]
+        WATCH["Watchdog\n(2am alert if no run)"]
+        N8N["n8n webhooks\n(manual trigger,\nnotifications)"]
+    end
+
+    TIMER --> DECIDE
+    N8N -.-> CMD
+
+    style DATA fill:#e8f4fd,stroke:#4a90e2
+    style DECIDE fill:#fff3e0,stroke:#f5a623
+    style EXECUTE fill:#e8f5e9,stroke:#4caf50
+    style INFRA fill:#f3e5f5,stroke:#9c27b0
+    style SKIP fill:#ffebee,stroke:#e53935
+```
+
+```mermaid
+flowchart LR
+    subgraph FALLBACK["Degraded Mode Fallback Chain"]
+        direction LR
+        A1["Ambient Weather\nStation"] -->|offline| A2["OpenMeteo\nForecast"] -->|also down| A3["Conservative Defaults\n85F, 30% humidity, no rain"]
+    end
+
+    subgraph MODES["Operating Modes"]
+        direction LR
+        SHADOW["Shadow Mode\nLog decisions, don't actuate"]
+        LIVE["Live Mode\nFull Rachio control"]
+        DORMANT["Rachio Fallback\nFixed schedule if homelab down"]
+    end
+
+    style FALLBACK fill:#fff8e1,stroke:#ff8f00
+    style MODES fill:#e8eaf6,stroke:#3f51b5
+```
+
 ## What it does
 
 Every hour, the system checks whether your lawn needs water by running a five-stage decision pipeline:
