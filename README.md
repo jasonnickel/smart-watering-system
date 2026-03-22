@@ -1,6 +1,6 @@
 # Smart Water System
 
-Standalone irrigation controller that manages a Rachio sprinkler system using local weather station data, scientific soil moisture modeling, and multi-day forecasting. Replaces Rachio's paid Weather Intelligence features with more accurate, hyper-local decision making.
+Standalone irrigation controller that takes over scheduling for a Rachio sprinkler system using your own weather station data, ET-based soil moisture modeling, and multi-day forecasting. Gives you full control over the decision logic that Rachio keeps behind its app.
 
 ## How It Works
 
@@ -40,41 +40,36 @@ Every hour, the system checks whether your lawn needs water by running a five-st
 
 If watering is needed, the system sends the command to Rachio, verifies it was accepted, and updates all state. If not, it logs the skip reason and moves on.
 
-## Why not just use Rachio's built-in scheduling?
+## What Rachio already does (and where it falls short)
 
-Rachio's free tier uses regional weather data and basic scheduling. The paid Weather Intelligence upgrade adds ET-based watering, but:
+Rachio 3 includes solid smart watering at no recurring cost. No subscription required. Here's what's free, what's paid, and what the community reports about how well each feature actually works:
 
-- **Your weather station is more accurate than regional data.** This system reads directly from an Ambient Weather station in your yard, capturing microclimate conditions Rachio's regional model misses.
-- **Proactive forecast watering.** Uses OpenMeteo's forecast API to water before predicted hot/dry streaks, not just react to current conditions.
-- **Smart soak cycles.** Splits long runs into two passes with soak intervals for Colorado clay soil - better infiltration, less runoff.
-- **Emergency cooling.** Dynamic temperature triggers that account for solar radiation, humidity, and wind - more nuanced than Rachio's blunt heat threshold.
-- **Cost tracking.** Calculates actual costs against your tiered water rates and enforces daily budgets.
+| Feature | Availability | Real-World Issues |
+|---------|-------------|-------------------|
+| **Flex Daily** (ET-based scheduling) | Free, Rachio 3 only | Works well in mild climates with standard soil. Documented failures in extreme heat (Phoenix users report 8-day gaps during 100F+) and non-standard soil. Highly sensitive to precipitation rate calibration - without catch cup testing, users report 20-hour schedules or mushroom-growing over-watering. Many users give up and revert to fixed schedules. |
+| **Weather Intelligence** (rain/wind/freeze skip) | Free, all models | The most-complained-about feature. Documented cases of watering during active heavy rain, applying saturation skips to dry yards, and showing 0.14" when local gauges read 0.35". Has a timing blind spot - rain that starts within the final hour before a scheduled run does not trigger a skip. Silently uses stale data when nearby PWS stations go offline. |
+| **Cycle and Soak** | Free, all models | Generally works but inconsistently activates - some zones get it, others in the same schedule don't. Users report zones extending from 8 to 46 minutes without clear explanation in the app. |
+| **PWS support** | Free, all models | Rachio 3 routes PWS data through Aeris Weather aggregation rather than reading stations directly. This adds lag and a fragile dependency chain (station -> CWOP/PWSWeather -> Aeris -> Rachio). No alerting when a nearby station goes offline - the system silently falls back to less accurate data. |
+| **Weather Adjust** (proactive heat/cool wave) | $29.99 one-time | Applies percentage-based boosts during heat waves (default: +20% at 105F for 2+ days). Community reaction was strongly negative - users describe it as a paywall on what should be core functionality. Redundant if you already use Flex Daily. |
+| **Cloud dependency** | Required | No local control path. If your internet goes down, the controller runs its last cached schedule. Cannot be modified or manually triggered without cloud connectivity. Rain Bird acquired Rachio in October 2025, raising concerns about long-term API and service continuity. |
 
-## How it works
+## What this system does differently
 
-```
-systemd timer (hourly)
-  |
-  smart-water CLI
-    |-- Reads weather from Ambient Weather station (falls back to OpenMeteo if offline)
-    |-- Calculates ET and updates soil moisture balance per zone
-    |-- Runs decision engine (5 stages)
-    |-- If WATER: sends command to Rachio -> verifies -> updates state
-    |-- If SKIP: logs reason
-    |-- All state persisted to SQLite
-  |
-  watchdog timer (2am daily)
-    |-- Alerts if no successful run occurred in the last 24 hours
+This project exists because Rachio's smart features are opaque, cloud-dependent, and fragile in the specific ways documented above. It takes full control of the decision engine and addresses each of those failure modes:
 
-n8n (optional thin shell)
-  |-- Webhook for "water now" from phone
-  |-- Notification relay for email alerts
-  |-- Status query endpoint
-```
+- **Direct weather station reads.** Pulls data from your Ambient Weather station via API. No PWSWeather aggregation chain, no Aeris middleman, no silent fallback to distant stations. If the station is offline, the system knows immediately and falls back explicitly rather than silently degrading.
+
+- **Transparent decisions.** Every run is logged with full reasoning in SQLite: which zones needed water, how much deficit each had, what the ET calculation was, why others were skipped, what the forecast said. You can query exactly why any decision was made. Rachio's app shows what happened but not the full decision chain.
+
+- **Multi-day ET projection.** Projects soil moisture balances forward using OpenMeteo's 4-day forecast, watering before a predicted deficit rather than during one. Rachio's Weather Adjust ($29.99) does simple percentage boosts at fixed thresholds - this does per-zone ET projection across every forecast day.
+
+- **Reliable in extreme heat.** The emergency cooling system uses dynamic temperature triggers adjusted for solar radiation, humidity, and wind. Where Rachio's Flex Daily has documented 8-day watering gaps during 100F+ heat in rocky soil, this system's degraded-mode policy ensures it will never skip watering in summer because a data source is unavailable. Conservative defaults (assume 85F, 30% humidity, no rain) activate automatically when APIs go stale.
+
+- **Cost-aware.** Calculates actual water costs against tiered utility rate structures, enforces daily gallon and dollar budgets, and tracks cumulative billing cycle usage. Rachio has no cost modeling.
+
+- **Fully local.** Runs on your own hardware with SQLite. No cloud required for decision-making. The only external dependencies are the weather APIs (with fallbacks) and the Rachio API itself (for sending commands to the controller hardware). If the Rain Bird acquisition eventually deprecates the Rachio cloud, the decision engine and all historical data remain intact on your server.
 
 ## Key features
-
-**Degraded mode.** If the weather station goes offline during a heat wave, the system doesn't just skip watering. It falls back to OpenMeteo forecast data, then to conservative defaults (assume hot and dry). It will never refuse to water in summer just because an API is down.
 
 **Shadow mode.** Before going live, the system runs in shadow mode - makes all decisions and logs them, but doesn't actually send commands to Rachio. Run for a week to validate decisions before activating.
 
