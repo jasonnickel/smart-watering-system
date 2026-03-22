@@ -41,7 +41,6 @@ export async function runGoLive() {
   console.log(`Current mode: ${YELLOW}SHADOW${RESET} (decisions logged, Rachio not actuated)\n`);
 
   // Pre-flight checks
-  let passed = 0;
   let failed = 0;
 
   initDB(DB_PATH);
@@ -50,11 +49,9 @@ export async function runGoLive() {
   const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString();
   const recentRuns = getRunsSince(weekAgo);
   const decisions = recentRuns.filter(r => r.phase === 'DECIDE');
-  const shadowRuns = recentRuns.filter(r => r.shadow === 1);
-
   if (decisions.length >= 7) {
     console.log(`  ${GREEN}OK${RESET}  ${decisions.length} decisions logged in the last 7 days`);
-    passed++;
+
   } else if (decisions.length > 0) {
     console.log(`  ${YELLOW}!!${RESET}  Only ${decisions.length} decisions in 7 days (recommend at least 7)`);
   } else {
@@ -66,7 +63,7 @@ export async function runGoLive() {
   const failures = recentRuns.filter(r => r.phase === 'COMMAND' && r.success === 0);
   if (failures.length === 0) {
     console.log(`  ${GREEN}OK${RESET}  No command failures in recent history`);
-    passed++;
+
   } else {
     console.log(`  ${YELLOW}!!${RESET}  ${failures.length} command failure(s) in recent history`);
   }
@@ -74,7 +71,7 @@ export async function runGoLive() {
   // Check: API keys configured?
   if (CONFIG.api.rachio.apiKey && CONFIG.api.rachio.apiKey !== 'your-rachio-api-key') {
     console.log(`  ${GREEN}OK${RESET}  Rachio API key configured`);
-    passed++;
+
   } else {
     console.log(`  ${RED}FAIL${RESET}  No Rachio API key. Run: smart-water setup`);
     failed++;
@@ -84,7 +81,7 @@ export async function runGoLive() {
   const zoneCount = Object.keys(CONFIG.watering.zoneProfiles).length;
   if (zoneCount > 0) {
     console.log(`  ${GREEN}OK${RESET}  ${zoneCount} zones configured`);
-    passed++;
+
   } else {
     console.log(`  ${RED}FAIL${RESET}  No zones configured`);
     failed++;

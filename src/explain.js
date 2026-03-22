@@ -2,8 +2,6 @@
 // Turns structured decision data into human-readable sentences.
 // No LLM needed - template-based with context-aware logic.
 
-import CONFIG from './config.js';
-
 /**
  * Generate a plain English explanation for a decision.
  *
@@ -171,7 +169,7 @@ function extractNumber(str, regex) {
 export function shortExplanation(run) {
   if (!run) return 'No activity';
 
-  const { decision, reason, total_gallons, window } = run;
+  const { decision, reason, total_gallons } = run;
 
   if (decision === 'SKIP') {
     if (reason.includes('Wind')) return 'Skipped - too windy';

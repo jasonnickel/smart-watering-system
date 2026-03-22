@@ -37,7 +37,7 @@ import { runSetup } from './setup.js';
 import { runGoLive } from './go-live.js';
 import { generateStatusPage } from './status-page.js';
 import { analyzeTuning } from './core/tuning.js';
-import { logFlowAudit, getStatusJSON as getStatusJSONFromDB } from './db/state.js';
+import { getStatusJSON as getStatusJSONFromDB } from './db/state.js';
 import { connectMQTT, publishState, publishHADiscovery, disconnectMQTT } from './mqtt.js';
 
 const DB_PATH = process.env.DB_PATH || join(homedir(), '.smart-water', 'smart-water.db');
