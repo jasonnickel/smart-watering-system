@@ -62,6 +62,24 @@ CREATE TABLE IF NOT EXISTS system_state (
   value TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS weather_discrepancy (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  timestamp TEXT NOT NULL DEFAULT (datetime('now')),
+  field TEXT NOT NULL,
+  ambient_value REAL,
+  openmeteo_value REAL,
+  used_value REAL,
+  reason TEXT
+);
+
+CREATE TABLE IF NOT EXISTS precipitation_audit (
+  date TEXT PRIMARY KEY,
+  ambient_inches REAL,
+  openmeteo_inches REAL,
+  used_inches REAL,
+  discrepancy_pct REAL
+);
+
 -- Index for recent run lookups
 CREATE INDEX IF NOT EXISTS idx_runs_timestamp ON runs(timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_runs_window ON runs(window, timestamp DESC);

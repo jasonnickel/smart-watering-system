@@ -31,6 +31,7 @@ import {
 } from './db/state.js';
 import { resolveCurrentWeather, resolveYesterdayWeather, resolveForecast } from './weather.js';
 import { getZones, buildProfiles, startMultiZoneRun } from './api/rachio.js';
+import { getLiveRainCheck } from './api/ambient.js';
 import { updateDailyBalances, inchesAdded, totalCapacity } from './core/soil-moisture.js';
 import { getWateringDecision, getEmergencyCoolingDecision, currentWindow } from './core/rule-engine.js';
 import { calculateCost, needsBillingReset } from './core/finance.js';
@@ -192,6 +193,19 @@ async function executePlan(plan, window, shadow) {
   }
 
   log(1, `Decision: WATER - ${plan.reason} (${plan.originalZones.length} zones, ${plan.gallons?.toFixed(0)} gal, $${plan.cost?.toFixed(2)})`);
+
+  // [1.1] Real-time rain check before sending command
+  const rainCheck = await getLiveRainCheck();
+  if (rainCheck) {
+    const rainThreshold = CONFIG.schedule.skipConditions.rainInches;
+    if (rainCheck.hourlyRain > 0.02 || rainCheck.dailyRain > rainThreshold) {
+      const reason = `Aborted - Active Rain Detected (hourly: ${rainCheck.hourlyRain.toFixed(2)}", daily: ${rainCheck.dailyRain.toFixed(2)}")`;
+      log(1, reason);
+      logRun({ window, phase: 'COMMAND', decision: 'SKIP', reason, success: true, shadow });
+      return;
+    }
+    log(2, `Rain check passed: hourly=${rainCheck.hourlyRain}", daily=${rainCheck.dailyRain}"`);
+  }
 
   // Phase 2: COMMAND
   if (shadow) {

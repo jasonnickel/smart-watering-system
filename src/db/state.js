@@ -209,6 +209,43 @@ export function cleanupOldData(retentionDays) {
   }
 }
 
+// --- Weather Discrepancy ---
+
+export function logWeatherDiscrepancy(field, ambientValue, openmeteoValue, usedValue, reason) {
+  getDB().prepare(`
+    INSERT INTO weather_discrepancy (field, ambient_value, openmeteo_value, used_value, reason)
+    VALUES (?, ?, ?, ?, ?)
+  `).run(field, ambientValue, openmeteoValue, usedValue, reason);
+}
+
+export function getRecentDiscrepancies(hours = 24) {
+  const since = new Date(Date.now() - hours * 3600000).toISOString();
+  return getDB().prepare('SELECT * FROM weather_discrepancy WHERE timestamp >= ? ORDER BY timestamp DESC').all(since);
+}
+
+// --- Precipitation Audit ---
+
+export function logPrecipitationAudit(dateStr, ambientInches, openmeteoInches, usedInches) {
+  const discrepancyPct = ambientInches > 0 && openmeteoInches > 0
+    ? Math.abs(ambientInches - openmeteoInches) / Math.max(ambientInches, openmeteoInches) * 100
+    : 0;
+
+  getDB().prepare(`
+    INSERT INTO precipitation_audit (date, ambient_inches, openmeteo_inches, used_inches, discrepancy_pct)
+    VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT(date) DO UPDATE SET
+      ambient_inches = excluded.ambient_inches,
+      openmeteo_inches = excluded.openmeteo_inches,
+      used_inches = excluded.used_inches,
+      discrepancy_pct = excluded.discrepancy_pct
+  `).run(dateStr, ambientInches, openmeteoInches, usedInches, discrepancyPct);
+}
+
+export function getRecentPrecipitationAudits(days = 7) {
+  const since = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
+  return getDB().prepare('SELECT * FROM precipitation_audit WHERE date >= ? ORDER BY date DESC').all(since);
+}
+
 // --- System State (key-value for date guards, cooling time, locks) ---
 
 export function getSystemState(key) {

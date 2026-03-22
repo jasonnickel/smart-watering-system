@@ -1,0 +1,13 @@
+[Unit]
+Description=Smart Water System - Daily Summary Email
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/smart-water
+ExecStart=/usr/bin/node src/summary.js
+EnvironmentFile=/root/.smart-water/.env
+TimeoutStartSec=60
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=smart-water-summary

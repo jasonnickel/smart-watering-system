@@ -164,6 +164,16 @@ const CONFIG = {
     },
   },
 
+  // [1.1] Real-time rain check thresholds
+  rainCheck: {
+    hourlyRainThreshold: 0.02, // inches/hour - any measurable rain aborts
+  },
+
+  // [1.2] Weather cross-validation
+  weatherValidation: {
+    precipDiscrepancyThreshold: 0.15, // inches - flag if sources disagree by this much
+  },
+
   watchdog: {
     alertHour: 2,
   },
