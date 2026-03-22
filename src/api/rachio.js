@@ -98,6 +98,38 @@ export function buildProfiles(rachioZones) {
 }
 
 /**
+ * [4.1] Get recent zone run activity from Rachio for flow data.
+ * Requires an EveryDrop flow meter connected to the controller.
+ *
+ * @param {string} deviceId - Rachio device ID
+ * @returns {Promise<Array|null>} Array of zone run events with flow data, or null
+ */
+export async function getDeviceActivity(deviceId) {
+  if (!deviceId) return null;
+
+  try {
+    const data = await fetchWithRetry(
+      `${BASE_URL}/device/${deviceId}/current_schedule`,
+      { headers: authHeaders() },
+      'Rachio-Activity'
+    );
+
+    // Rachio returns flow data in zone run events if a flow meter is connected
+    if (data?.zones) {
+      return data.zones.map(z => ({
+        zoneId: z.zoneId,
+        duration: z.duration, // seconds
+        totalVolume: z.totalVolume ?? null, // gallons, null if no flow meter
+      }));
+    }
+    return null;
+  } catch (err) {
+    log(2, `Device activity fetch failed (normal if no active schedule): ${err.message}`);
+    return null;
+  }
+}
+
+/**
  * Start a multi-zone watering run on Rachio.
  * This is the COMMAND phase - sends the instruction to the controller.
  *

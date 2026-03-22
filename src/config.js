@@ -1,5 +1,8 @@
 // Configuration for Smart Water System
 // Zone profiles, thresholds, and rates live here. Secrets come from .env.
+// [3.1] Zone profiles can be overridden by zones.yaml.
+
+import { loadZoneConfig } from './yaml-loader.js';
 
 const CONFIG = {
   api: {
@@ -174,9 +177,26 @@ const CONFIG = {
     precipDiscrepancyThreshold: 0.15, // inches - flag if sources disagree by this much
   },
 
+  // [5.1] MQTT for Home Assistant
+  mqtt: {
+    brokerUrl: process.env.MQTT_BROKER_URL || '',
+    topicPrefix: process.env.MQTT_TOPIC_PREFIX || 'smart-water',
+  },
+
   watchdog: {
     alertHour: 2,
   },
 };
+
+// [3.1] Override zone/soil profiles from zones.yaml if it exists
+const yamlConfig = loadZoneConfig();
+if (yamlConfig) {
+  if (yamlConfig.zoneProfiles) {
+    CONFIG.watering.zoneProfiles = yamlConfig.zoneProfiles;
+  }
+  if (yamlConfig.soilProfiles) {
+    CONFIG.watering.soilProfiles = { ...CONFIG.watering.soilProfiles, ...yamlConfig.soilProfiles };
+  }
+}
 
 export default CONFIG;

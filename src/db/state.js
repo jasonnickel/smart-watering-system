@@ -246,6 +246,56 @@ export function getRecentPrecipitationAudits(days = 7) {
   return getDB().prepare('SELECT * FROM precipitation_audit WHERE date >= ? ORDER BY date DESC').all(since);
 }
 
+// --- Flow Audit ---
+
+export function logFlowAudit(zoneId, zoneNumber, expectedGallons, actualGallons) {
+  const deviationPct = expectedGallons > 0
+    ? ((actualGallons - expectedGallons) / expectedGallons) * 100
+    : 0;
+  getDB().prepare(`
+    INSERT INTO flow_audit (zone_id, zone_number, expected_gallons, actual_gallons, deviation_pct)
+    VALUES (?, ?, ?, ?, ?)
+  `).run(zoneId, zoneNumber, expectedGallons, actualGallons, deviationPct);
+}
+
+export function getFlowAuditsForZone(zoneId, limit = 20) {
+  return getDB().prepare(
+    'SELECT * FROM flow_audit WHERE zone_id = ? ORDER BY timestamp DESC LIMIT ?'
+  ).all(zoneId, limit);
+}
+
+export function getFlowCalibrationSuggestions() {
+  // Find zones with consistent deviation over 5+ runs
+  const zones = getDB().prepare(`
+    SELECT zone_id, zone_number,
+           AVG(deviation_pct) as avg_deviation,
+           COUNT(*) as run_count
+    FROM flow_audit
+    GROUP BY zone_id
+    HAVING COUNT(*) >= 5 AND ABS(AVG(deviation_pct)) > 15
+  `).all();
+  return zones;
+}
+
+// --- Zone Tuning ---
+
+export function logTuningSuggestion(zoneId, parameter, originalValue, suggestedValue) {
+  getDB().prepare(`
+    INSERT INTO zone_tuning (zone_id, parameter, original_value, suggested_value)
+    VALUES (?, ?, ?, ?)
+  `).run(zoneId, parameter, originalValue, suggestedValue);
+}
+
+export function getUnappliedTuning() {
+  return getDB().prepare(
+    'SELECT * FROM zone_tuning WHERE applied = 0 ORDER BY timestamp DESC'
+  ).all();
+}
+
+export function markTuningApplied(id) {
+  getDB().prepare('UPDATE zone_tuning SET applied = 1 WHERE id = ?').run(id);
+}
+
 // --- System State (key-value for date guards, cooling time, locks) ---
 
 export function getSystemState(key) {

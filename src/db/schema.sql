@@ -80,6 +80,26 @@ CREATE TABLE IF NOT EXISTS precipitation_audit (
   discrepancy_pct REAL
 );
 
+CREATE TABLE IF NOT EXISTS flow_audit (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  timestamp TEXT NOT NULL DEFAULT (datetime('now')),
+  zone_id TEXT NOT NULL,
+  zone_number INTEGER,
+  expected_gallons REAL,
+  actual_gallons REAL,
+  deviation_pct REAL
+);
+
+CREATE TABLE IF NOT EXISTS zone_tuning (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  timestamp TEXT NOT NULL DEFAULT (datetime('now')),
+  zone_id TEXT NOT NULL,
+  parameter TEXT NOT NULL,
+  original_value REAL,
+  suggested_value REAL,
+  applied INTEGER DEFAULT 0
+);
+
 -- Index for recent run lookups
 CREATE INDEX IF NOT EXISTS idx_runs_timestamp ON runs(timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_runs_window ON runs(window, timestamp DESC);

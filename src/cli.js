@@ -35,6 +35,10 @@ import { getLiveRainCheck } from './api/ambient.js';
 import { updateDailyBalances, inchesAdded, totalCapacity } from './core/soil-moisture.js';
 import { getWateringDecision, getEmergencyCoolingDecision, currentWindow } from './core/rule-engine.js';
 import { calculateCost, needsBillingReset } from './core/finance.js';
+import { generateStatusPage } from './status-page.js';
+import { analyzeTuning } from './core/tuning.js';
+import { logFlowAudit, getStatusJSON as getStatusJSONFromDB } from './db/state.js';
+import { connectMQTT, publishState, publishHADiscovery, disconnectMQTT } from './mqtt.js';
 
 const DB_PATH = process.env.DB_PATH || join(homedir(), '.smart-water', 'smart-water.db');
 
@@ -107,9 +111,17 @@ async function runScheduledCycle(shadow) {
 
     if (window === 'daily') {
       await executePlan(getWateringDecision(ctx), 'daily', shadow);
+      // [4.2] Run adaptive tuning analysis after daily watering
+      analyzeTuning(ctx.profiles);
     } else if (window === 'emergency') {
       await executePlan(getEmergencyCoolingDecision(ctx), 'emergency', shadow);
     }
+
+    // [2.3] Regenerate status page after every run
+    generateStatusPage();
+
+    // [5.1] Publish to MQTT if configured
+    await publishToMQTT(ctx);
   } finally {
     releaseRunLock();
   }
@@ -405,6 +417,37 @@ function printStatus() {
   }
 
   console.log('');
+}
+
+/**
+ * [5.1] Publish system state to MQTT for Home Assistant.
+ */
+async function publishToMQTT(ctx) {
+  if (!process.env.MQTT_BROKER_URL) return;
+
+  const connected = await connectMQTT();
+  if (!connected) return;
+
+  try {
+    const todayStr = localDateStr();
+    const status = getStatusJSONFromDB(todayStr);
+
+    publishState({
+      status,
+      weather: ctx.weather,
+      weatherSource: ctx.weatherSource,
+      lastDecision: status.lastRun,
+    });
+
+    // Publish HA discovery on first run only
+    const discoveryPublished = getSystemState('mqtt_discovery_published');
+    if (!discoveryPublished && status.moisture.length > 0) {
+      publishHADiscovery(status.moisture);
+      setSystemState('mqtt_discovery_published', 'true');
+    }
+  } finally {
+    await disconnectMQTT();
+  }
 }
 
 main().catch(err => {

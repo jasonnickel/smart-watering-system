@@ -3,6 +3,7 @@
 
 import CONFIG from '../config.js';
 import { calculateDailyET, adjustETForZone } from './et.js';
+import { getETCorrection } from './tuning.js';
 
 /**
  * Calculate total water-holding capacity for a zone in inches.
@@ -63,7 +64,7 @@ export function updateDailyBalances(currentBalances, yesterdayWeather, profiles,
   for (const profile of profiles) {
     const capacity = totalCapacity(profile);
     const current = updated[profile.id] ?? capacity * CONFIG.watering.initialMoistureLevel;
-    const adjustedET = adjustETForZone(baseET, profile);
+    const adjustedET = adjustETForZone(baseET, profile) * getETCorrection(profile.id);
     const newBalance = Math.max(0, Math.min(capacity, current - adjustedET + rain));
     updated[profile.id] = newBalance;
   }

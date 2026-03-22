@@ -1,0 +1,89 @@
+# Smart Water System - Zone Configuration
+#
+# Edit this file to match your yard. The system reads it on each run.
+#
+# MEASURING SUN EXPOSURE:
+#   1.0 = full sun all day
+#   0.7 = partial shade (e.g., shade from house in morning or evening)
+#   0.5 = half shade (e.g., under a tree canopy for part of the day)
+#   0.3 = mostly shade
+#
+# MEASURING AREA:
+#   Measure each zone's irrigated area in square feet.
+#   Use a tape measure or satellite view (Google Earth).
+#
+# PRIORITY:
+#   Lower number = higher priority = waters first when budget is tight.
+#   1 = critical (front lawn, high visibility)
+#   2 = important
+#   3 = moderate
+#   4 = low (drip beds, resilient plants)
+#
+# SOIL PROFILES:
+#   If you have a soil test, enter organic matter % and pH.
+#   These affect water-holding capacity calculations.
+#   Use "default" if you haven't tested.
+
+soil_profiles:
+  frontYard2023:
+    organic_matter_pct: 1.77
+    soil_ph: 8.0
+  default:
+    organic_matter_pct: 2.0
+    soil_ph: 7.5
+
+zones:
+  1:
+    type: lawn            # lawn or drip
+    sun_exposure: 1.0
+    area_sqft: 400
+    priority: 1
+    soil: frontYard2023
+  2:
+    type: lawn
+    sun_exposure: 1.0
+    area_sqft: 400
+    priority: 1
+    soil: frontYard2023
+  3:
+    type: lawn
+    sun_exposure: 1.0
+    area_sqft: 400
+    priority: 1
+    soil: frontYard2023
+  4:
+    type: lawn
+    sun_exposure: 1.0
+    area_sqft: 400
+    priority: 1
+    soil: frontYard2023
+  5:
+    type: lawn
+    sun_exposure: 0.7
+    area_sqft: 400
+    priority: 3
+    soil: default
+  6:
+    type: lawn
+    sun_exposure: 0.85
+    area_sqft: 400
+    priority: 1
+    soil: default
+  7:
+    type: drip
+    sun_exposure: 0.6
+    area_sqft: 300
+    priority: 4
+    soil: default
+  8:
+    type: drip
+    sun_exposure: 0.6
+    area_sqft: 300
+    priority: 4
+    soil: default
+  9:
+    type: drip
+    sun_exposure: 0.6
+    area_sqft: 300
+    priority: 4
+    soil: default
