@@ -7,6 +7,7 @@
 //   smart-water run [--shadow]    Run the hourly decision cycle
 //   smart-water water             Manual watering trigger (all deficit zones)
 //   smart-water status            Show current system status
+//   smart-water status --json     Machine-readable status for n8n
 //   smart-water cleanup           Remove old data beyond retention period
 
 import { config as loadEnv } from 'dotenv';
@@ -21,7 +22,13 @@ loadEnv({ path: existsSync(projectEnv) ? projectEnv : homeEnv });
 
 import CONFIG from './config.js';
 import { log } from './log.js';
-import { initDB, logRun, getSoilMoisture, bulkSetSoilMoisture, getFinanceData, updateFinance, getDailyUsage, updateDailyUsage, getFertilizerLog, getStatus, cleanupOldData } from './db/state.js';
+import { localDateStr, localYesterdayStr, localHour, localMonth } from './time.js';
+import {
+  initDB, logRun, getSoilMoisture, bulkSetSoilMoisture,
+  getFinanceData, updateFinance, getDailyUsage, updateDailyUsage,
+  getFertilizerLog, getStatus, getStatusJSON, cleanupOldData,
+  getSystemState, setSystemState, acquireRunLock, releaseRunLock,
+} from './db/state.js';
 import { resolveCurrentWeather, resolveYesterdayWeather, resolveForecast } from './weather.js';
 import { getZones, buildProfiles, startMultiZoneRun } from './api/rachio.js';
 import { updateDailyBalances, inchesAdded, totalCapacity } from './core/soil-moisture.js';
@@ -29,6 +36,9 @@ import { getWateringDecision, getEmergencyCoolingDecision, currentWindow } from 
 import { calculateCost, needsBillingReset } from './core/finance.js';
 
 const DB_PATH = process.env.DB_PATH || join(homedir(), '.smart-water', 'smart-water.db');
+
+// Track whether a command failure occurred for exit code
+let commandFailed = false;
 
 async function main() {
   const command = process.argv[2] || 'run';
@@ -45,14 +55,23 @@ async function main() {
       await runManualWatering(shadow);
       break;
     case 'status':
-      printStatus();
+      if (flags.includes('--json')) {
+        console.log(JSON.stringify(getStatusJSON(localDateStr()), null, 2));
+      } else {
+        printStatus();
+      }
       break;
     case 'cleanup':
       cleanupOldData(90);
       break;
     default:
-      console.log('Usage: smart-water [run|water|status|cleanup] [--shadow]');
+      console.log('Usage: smart-water [run|water|status|cleanup] [--shadow] [--json]');
       process.exit(1);
+  }
+
+  // [FIX P1] Exit nonzero when command/verify failed so watchdog catches it
+  if (commandFailed) {
+    process.exit(2);
   }
 }
 
@@ -61,54 +80,92 @@ async function main() {
  * Determines the current window and runs the appropriate decision flow.
  */
 async function runScheduledCycle(shadow) {
-  const now = new Date();
-  const hour = parseInt(now.toLocaleString('en-US', { timeZone: CONFIG.location.timezone, hour: 'numeric', hour12: false }), 10);
-  const month = parseInt(now.toLocaleString('en-US', { timeZone: CONFIG.location.timezone, month: 'numeric' }), 10);
-
-  const window = currentWindow(hour, month);
-  log(1, `Scheduled run: hour=${hour}, month=${month}, window=${window}, shadow=${shadow}`);
-
-  if (window === 'none') {
-    log(1, 'Not in a watering window, exiting');
+  // [FIX P1] Acquire run lock to prevent overlap with manual triggers
+  if (!acquireRunLock()) {
+    log(1, 'Another run is in progress, exiting');
     return;
   }
 
-  const ctx = await buildContext();
+  try {
+    const now = new Date();
+    const hour = localHour(now);
+    const month = localMonth(now);
 
-  // Run daily soil moisture update (idempotent - checks date internally)
-  await runSoilUpdate(ctx, now);
+    const window = currentWindow(hour, month);
+    log(1, `Scheduled run: hour=${hour}, month=${month}, window=${window}, shadow=${shadow}`);
 
-  if (window === 'daily') {
-    await executePlan(getWateringDecision(ctx), 'daily', shadow);
-  } else if (window === 'emergency') {
-    await executePlan(getEmergencyCoolingDecision(ctx), 'emergency', shadow);
+    if (window === 'none') {
+      log(1, 'Not in a watering window, exiting');
+      return;
+    }
+
+    const ctx = await buildContext();
+
+    // [FIX P0] Run daily soil moisture update with date guard
+    runSoilUpdate(ctx, now);
+
+    if (window === 'daily') {
+      await executePlan(getWateringDecision(ctx), 'daily', shadow);
+    } else if (window === 'emergency') {
+      await executePlan(getEmergencyCoolingDecision(ctx), 'emergency', shadow);
+    }
+  } finally {
+    releaseRunLock();
   }
 }
 
 /**
- * Manual watering - runs all zones with a deficit regardless of schedule window.
+ * Manual watering - forces watering for all zones with a deficit.
+ * [FIX P2] Overrides forecast, budget, and fertilizer skips. Only safety stops it.
  */
 async function runManualWatering(shadow) {
-  log(1, 'Manual watering trigger');
-  const ctx = await buildContext();
-
-  // Force a watering decision ignoring schedule windows
-  const plan = getWateringDecision(ctx);
-  if (plan.decision === 'SKIP') {
-    log(1, `Manual run would skip: ${plan.reason}`);
-    // For manual, override skip unless it's a safety condition
-    if (plan.reason.startsWith('Current Conditions')) {
-      log(0, 'Safety conditions prevent watering even in manual mode');
-      logRun({ window: 'manual', phase: 'DECIDE', decision: 'SKIP', reason: plan.reason, success: true, shadow });
-      return;
-    }
+  // [FIX P1] Acquire run lock
+  if (!acquireRunLock()) {
+    log(1, 'Another run is in progress, exiting');
+    return;
   }
 
-  if (plan.decision === 'WATER') {
-    await executePlan(plan, 'manual', shadow);
-  } else {
-    log(1, 'No zones need water');
-    logRun({ window: 'manual', phase: 'DECIDE', decision: 'SKIP', reason: plan.reason, success: true, shadow });
+  try {
+    log(1, 'Manual watering trigger');
+    const ctx = await buildContext();
+
+    const plan = getWateringDecision(ctx);
+
+    if (plan.decision === 'SKIP') {
+      // [FIX P2] Only honor safety skips for manual triggers
+      if (plan.reason.startsWith('Current Conditions')) {
+        log(0, 'Safety conditions prevent watering even in manual mode');
+        logRun({ window: 'manual', phase: 'DECIDE', decision: 'SKIP', reason: plan.reason, success: true, shadow });
+        return;
+      }
+
+      // Override non-safety skips: re-run decision with relaxed context
+      log(1, `Overriding skip reason for manual trigger: ${plan.reason}`);
+      const relaxedCtx = {
+        ...ctx,
+        // Remove forecast to bypass forecast skip
+        forecast: null,
+        // Remove budget limits
+        dailyUsage: { gallons: 0, cost: 0 },
+        // Remove fertilizer guards
+        fertilizerLog: {},
+      };
+      const overridePlan = getWateringDecision(relaxedCtx);
+
+      if (overridePlan.decision === 'WATER') {
+        await executePlan(overridePlan, 'manual', shadow);
+        return;
+      }
+    }
+
+    if (plan.decision === 'WATER') {
+      await executePlan(plan, 'manual', shadow);
+    } else {
+      log(1, 'No zones need water');
+      logRun({ window: 'manual', phase: 'DECIDE', decision: 'SKIP', reason: plan.reason, success: true, shadow });
+    }
+  } finally {
+    releaseRunLock();
   }
 }
 
@@ -151,11 +208,15 @@ async function executePlan(plan, window, shadow) {
   } catch (err) {
     log(0, `COMMAND failed: ${err.message}`);
     logRun({ window, phase: 'COMMAND', decision: 'WATER', reason: plan.reason, success: false, error: err.message });
+    // [FIX P1] Mark command failure for nonzero exit
+    commandFailed = true;
     return;
   }
 
   if (!commandSuccess) {
     log(0, 'Rachio did not accept the watering command');
+    // [FIX P1] Mark command failure for nonzero exit
+    commandFailed = true;
     return;
   }
 
@@ -163,8 +224,13 @@ async function executePlan(plan, window, shadow) {
   log(1, 'Rachio accepted watering command');
   logRun({ window, phase: 'VERIFY', decision: 'WATER', reason: plan.reason, gallons: plan.gallons, cost: plan.cost, success: true });
 
+  // [FIX P1] Persist cooling time for emergency runs
+  if (window === 'emergency') {
+    setSystemState('last_cooling_time', new Date().toISOString());
+  }
+
   // Update state after verified execution
-  await updateStateAfterRun(plan);
+  updateStateAfterRun(plan);
 }
 
 /**
@@ -177,16 +243,19 @@ async function buildContext() {
     resolveForecast(),
   ]);
 
-  const profiles = buildProfiles(zones);
+  // [FIX] Filter out disabled Rachio zones
+  const enabledZones = zones.filter(z => z.enabled !== false);
+  const profiles = buildProfiles(enabledZones);
 
   const now = new Date();
-  const dateStr = now.toISOString().slice(0, 10);
-  const yesterday = new Date(now.getTime() - 86400000).toISOString().slice(0, 10);
-  const yesterdayWeather = await resolveYesterdayWeather(yesterday);
+  // [FIX P1] Use local timezone for all date accounting
+  const todayStr = localDateStr(now);
+  const yesterdayStr = localYesterdayStr(now);
+  const yesterdayWeather = await resolveYesterdayWeather(yesterdayStr);
 
   const soilMoisture = getSoilMoisture();
   const financeData = getFinanceData();
-  const dailyUsage = getDailyUsage(dateStr);
+  const dailyUsage = getDailyUsage(todayStr);
   const fertilizerLog = getFertilizerLog();
 
   // Check for billing cycle reset
@@ -199,6 +268,12 @@ async function buildContext() {
     log(1, `Weather source: ${weatherResult.source} (DEGRADED MODE)`);
   }
 
+  // [FIX P1] Read last cooling time from persistent state
+  const lastCoolingTime = getSystemState('last_cooling_time');
+
+  // [FIX] Re-read finance after potential reset
+  const currentFinance = getFinanceData();
+
   return {
     weather: weatherResult.data,
     weatherSource: weatherResult.source,
@@ -207,23 +282,31 @@ async function buildContext() {
     profiles,
     soilMoisture,
     financeData: {
-      cumulativeGallons: financeData.cumulative_gallons,
+      cumulativeGallons: currentFinance.cumulative_gallons,
     },
     dailyUsage: {
       gallons: dailyUsage.gallons,
       cost: dailyUsage.cost,
     },
     fertilizerLog,
-    lastCoolingTime: null, // TODO: read from runs table
+    lastCoolingTime,
   };
 }
 
 /**
  * Run daily soil moisture update.
+ * [FIX P0] Guarded by local date - only runs once per calendar day.
  */
-async function runSoilUpdate(ctx, now) {
-  const dateStr = now.toISOString().slice(0, 10);
-  const month = parseInt(now.toLocaleString('en-US', { timeZone: CONFIG.location.timezone, month: 'numeric' }), 10);
+function runSoilUpdate(ctx, now) {
+  const todayStr = localDateStr(now);
+  const lastUpdate = getSystemState('soil_last_updated');
+
+  if (lastUpdate === todayStr) {
+    log(2, 'Soil moisture already updated today, skipping');
+    return;
+  }
+
+  const month = localMonth(now);
 
   const updatedBalances = updateDailyBalances(
     ctx.soilMoisture,
@@ -233,6 +316,7 @@ async function runSoilUpdate(ctx, now) {
   );
 
   bulkSetSoilMoisture(updatedBalances, ctx.profiles);
+  setSystemState('soil_last_updated', todayStr);
 
   // Update context in place for the decision engine
   ctx.soilMoisture = updatedBalances;
@@ -243,9 +327,9 @@ async function runSoilUpdate(ctx, now) {
 /**
  * Update all state after a verified watering run.
  */
-async function updateStateAfterRun(plan) {
-  const now = new Date();
-  const dateStr = now.toISOString().slice(0, 10);
+function updateStateAfterRun(plan) {
+  // [FIX P1] Use local date for daily usage tracking
+  const todayStr = localDateStr();
 
   // Update soil moisture
   const currentBalances = getSoilMoisture();
@@ -262,7 +346,7 @@ async function updateStateAfterRun(plan) {
   for (const z of plan.originalZones) {
     zonesMap[z.id] = z.duration;
   }
-  updateDailyUsage(dateStr, plan.gallons, plan.cost, JSON.stringify(zonesMap));
+  updateDailyUsage(todayStr, plan.gallons, plan.cost, JSON.stringify(zonesMap));
 
   // Update finance
   const finance = getFinanceData();
@@ -280,7 +364,8 @@ async function updateStateAfterRun(plan) {
  * Print current system status.
  */
 function printStatus() {
-  const status = getStatus();
+  const todayStr = localDateStr();
+  const status = getStatus(todayStr);
 
   console.log('\n=== Smart Water System Status ===\n');
 

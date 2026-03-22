@@ -39,12 +39,17 @@ export async function resolveCurrentWeather() {
     const forecast = await getForecast();
     if (forecast?.[0]) {
       const today = forecast[0];
+      // [FIX P2] Do NOT use forecast precipitation as rainLast24h.
+      // Forecast precipitation is predicted future rain, not actual observed rain.
+      // Setting rainLast24h from forecast would cause the rule engine to skip
+      // watering due to "recent rain" that hasn't actually happened, and then
+      // the forecast stage would also skip for the same predicted rain - double penalty.
       const fallbackData = {
         temp: (today.tmax + today.tmin) / 2,
         humidity: today.humidity,
         windSpeed: 5, // OpenMeteo daily doesn't provide wind
         solarRadiation: today.solarRadiation,
-        rainLast24h: today.precipitation,
+        rainLast24h: 0, // Unknown - don't fabricate rain data
         timestamp: new Date().toISOString(),
       };
       log(1, 'DEGRADED MODE: Using OpenMeteo forecast as current weather proxy');

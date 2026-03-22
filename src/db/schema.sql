@@ -57,6 +57,11 @@ CREATE TABLE IF NOT EXISTS config_overrides (
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS system_state (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
+
 -- Index for recent run lookups
 CREATE INDEX IF NOT EXISTS idx_runs_timestamp ON runs(timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_runs_window ON runs(window, timestamp DESC);

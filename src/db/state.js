@@ -209,13 +209,79 @@ export function cleanupOldData(retentionDays) {
   }
 }
 
+// --- System State (key-value for date guards, cooling time, locks) ---
+
+export function getSystemState(key) {
+  const row = getDB().prepare('SELECT value FROM system_state WHERE key = ?').get(key);
+  return row ? row.value : null;
+}
+
+export function setSystemState(key, value) {
+  getDB().prepare(`
+    INSERT INTO system_state (key, value) VALUES (?, ?)
+    ON CONFLICT(key) DO UPDATE SET value = excluded.value
+  `).run(key, value);
+}
+
+/**
+ * Acquire a run lock. Returns true if lock acquired, false if already held.
+ */
+export function acquireRunLock() {
+  const lock = getSystemState('run_lock');
+  if (lock) {
+    const lockTime = new Date(lock).getTime();
+    // Stale lock detection: if lock is older than 10 minutes, force release
+    if (Date.now() - lockTime < 600000) {
+      return false;
+    }
+    log(1, 'Releasing stale run lock');
+  }
+  setSystemState('run_lock', new Date().toISOString());
+  return true;
+}
+
+export function releaseRunLock() {
+  getDB().prepare('DELETE FROM system_state WHERE key = ?').run('run_lock');
+}
+
 // --- Status ---
 
-export function getStatus() {
+export function getStatus(localDateStr) {
   const lastRun = getDB().prepare('SELECT * FROM runs ORDER BY timestamp DESC LIMIT 1').get();
   const moisture = getDB().prepare('SELECT * FROM soil_moisture ORDER BY zone_number').all();
   const finance = getFinanceData();
-  const todayUsage = getDailyUsage(new Date().toISOString().slice(0, 10));
+  const todayUsage = getDailyUsage(localDateStr || new Date().toISOString().slice(0, 10));
 
   return { lastRun, moisture, finance, todayUsage };
+}
+
+/**
+ * Get status as a JSON-serializable object for n8n webhook consumption.
+ */
+export function getStatusJSON(localDateStr) {
+  const status = getStatus(localDateStr);
+  return {
+    lastRun: status.lastRun ? {
+      timestamp: status.lastRun.timestamp,
+      window: status.lastRun.window,
+      decision: status.lastRun.decision,
+      reason: status.lastRun.reason,
+      gallons: status.lastRun.total_gallons,
+      cost: status.lastRun.total_cost,
+      success: status.lastRun.success === 1,
+    } : null,
+    moisture: status.moisture.map(z => ({
+      zone: z.zone_number,
+      name: z.zone_name,
+      pct: z.total_capacity > 0 ? Math.round((z.balance_inches / z.total_capacity) * 100) : null,
+      inches: z.balance_inches,
+      capacity: z.total_capacity,
+    })),
+    todayUsage: { gallons: status.todayUsage.gallons, cost: status.todayUsage.cost },
+    finance: status.finance ? {
+      monthlyGallons: status.finance.monthly_gallons,
+      monthlyCost: status.finance.monthly_cost,
+      cumulativeGallons: status.finance.cumulative_gallons,
+    } : null,
+  };
 }
