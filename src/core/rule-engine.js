@@ -3,6 +3,7 @@
 // Pure function: takes context, returns decision. No side effects.
 
 import CONFIG from '../config.js';
+import { parseStoredTimestamp } from '../time.js';
 import {
   totalCapacity,
   dynamicAllowedDepletion,
@@ -85,7 +86,10 @@ export function getEmergencyCoolingDecision(ctx) {
 
   // Enforce cooling interval
   if (ctx.lastCoolingTime) {
-    const elapsed = (Date.now() - new Date(ctx.lastCoolingTime).getTime()) / 60000;
+    const lastCoolingTime = parseStoredTimestamp(ctx.lastCoolingTime);
+    const elapsed = lastCoolingTime
+      ? (Date.now() - lastCoolingTime.getTime()) / 60000
+      : Number.POSITIVE_INFINITY;
     if (elapsed < CONFIG.schedule.coolingIntervalMinutes) {
       return { decision: 'SKIP', reason: 'Cooling interval not elapsed' };
     }
@@ -225,7 +229,9 @@ function wateringScore(profile, currentInches, trigger, capacity) {
 function isFertilizerGuardActive(zoneId, fertilizerLog) {
   if (!fertilizerLog?.[zoneId]) return false;
   const guardMs = CONFIG.agronomy.nutrientLeachingGuardDays * 86400000;
-  return (Date.now() - new Date(fertilizerLog[zoneId]).getTime()) < guardMs;
+  const appliedAt = parseStoredTimestamp(fertilizerLog[zoneId]);
+  if (!appliedAt) return false;
+  return (Date.now() - appliedAt.getTime()) < guardMs;
 }
 
 function calculateRunTotals(zones, cumulativeGallons) {

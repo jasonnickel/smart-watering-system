@@ -18,7 +18,7 @@ loadEnv({ path: existsSync(projectEnv) ? projectEnv : homeEnv });
 import CONFIG from './config.js';
 import { log } from './log.js';
 import { initDB, getRunsSince } from './db/state.js';
-import { localMonth } from './time.js';
+import { formatTimestamp, localMonth } from './time.js';
 
 const DB_PATH = process.env.DB_PATH || join(homedir(), '.smart-water', 'smart-water.db');
 const WEBHOOK_URL = process.env.N8N_WEBHOOK_URL;
@@ -52,7 +52,7 @@ async function main() {
   }
 
   // Look for runs in the last 24 hours
-  const since = new Date(Date.now() - 86400000).toISOString();
+  const since = formatTimestamp(new Date(Date.now() - 86400000));
   const recentRuns = getRunsSince(since);
 
   if (recentRuns.length === 0) {

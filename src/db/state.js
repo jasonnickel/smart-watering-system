@@ -2,16 +2,21 @@
 // All persistent state reads/writes go through this module.
 
 import Database from 'better-sqlite3';
+import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { mkdirSync, existsSync } from 'node:fs';
 import { log } from '../log.js';
+import { formatTimestamp, localDateStr } from '../time.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SCHEMA_PATH = join(__dirname, 'schema.sql');
+const RUN_LOCK_KEY = 'run_lock';
+const RUN_LOCK_STALE_SECONDS = 600;
 
 let db = null;
+let activeRunLockValue = null;
 
 /**
  * Initialize the database connection and apply schema.
@@ -20,6 +25,12 @@ let db = null;
  * @returns {Database} The database instance
  */
 export function initDB(dbPath) {
+  if (db) {
+    db.close();
+    db = null;
+    activeRunLockValue = null;
+  }
+
   const dir = dirname(dbPath);
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true });
@@ -43,6 +54,16 @@ export function initDB(dbPath) {
 }
 
 /**
+ * Close the active database connection.
+ */
+export function closeDB() {
+  if (!db) return;
+  db.close();
+  db = null;
+  activeRunLockValue = null;
+}
+
+/**
  * Get the active database instance.
  */
 export function getDB() {
@@ -53,10 +74,12 @@ export function getDB() {
 // --- Runs ---
 
 export function logRun({ window, phase, decision, reason, zones, gallons, cost, success, shadow, error }) {
+  const timestamp = formatTimestamp();
   return getDB().prepare(`
-    INSERT INTO runs (window, phase, decision, reason, zones_json, total_gallons, total_cost, success, shadow, error_message)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO runs (timestamp, window, phase, decision, reason, zones_json, total_gallons, total_cost, success, shadow, error_message)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
+    timestamp,
     window, phase, decision, reason,
     zones ? JSON.stringify(zones) : null,
     gallons ?? 0, cost ?? 0,
@@ -69,14 +92,17 @@ export function getLastSuccessfulRun(window) {
   return getDB().prepare(`
     SELECT * FROM runs
     WHERE window = ? AND success = 1 AND phase = 'VERIFY'
-    ORDER BY timestamp DESC LIMIT 1
+    ORDER BY julianday(timestamp) DESC, id DESC LIMIT 1
   `).get(window);
 }
 
 export function getRunsSince(since) {
+  const normalizedSince = formatTimestamp(since);
   return getDB().prepare(`
-    SELECT * FROM runs WHERE timestamp >= ? ORDER BY timestamp DESC
-  `).all(since);
+    SELECT * FROM runs
+    WHERE julianday(timestamp) >= julianday(?)
+    ORDER BY julianday(timestamp) DESC, id DESC
+  `).all(normalizedSince);
 }
 
 // --- Soil Moisture ---
@@ -91,20 +117,22 @@ export function getSoilMoisture() {
 }
 
 export function setSoilMoisture(zoneId, zoneNumber, zoneName, balanceInches, totalCapacity) {
+  const timestamp = formatTimestamp();
   getDB().prepare(`
     INSERT INTO soil_moisture (zone_id, zone_number, zone_name, balance_inches, total_capacity, last_updated)
-    VALUES (?, ?, ?, ?, ?, datetime('now'))
+    VALUES (?, ?, ?, ?, ?, ?)
     ON CONFLICT(zone_id) DO UPDATE SET
       balance_inches = excluded.balance_inches,
       total_capacity = excluded.total_capacity,
       last_updated = excluded.last_updated
-  `).run(zoneId, zoneNumber, zoneName, balanceInches, totalCapacity);
+  `).run(zoneId, zoneNumber, zoneName, balanceInches, totalCapacity, timestamp);
 }
 
 export function bulkSetSoilMoisture(balances, profiles) {
+  const timestamp = formatTimestamp();
   const stmt = getDB().prepare(`
     INSERT INTO soil_moisture (zone_id, zone_number, zone_name, balance_inches, total_capacity, last_updated)
-    VALUES (?, ?, ?, ?, ?, datetime('now'))
+    VALUES (?, ?, ?, ?, ?, ?)
     ON CONFLICT(zone_id) DO UPDATE SET
       balance_inches = excluded.balance_inches,
       total_capacity = excluded.total_capacity,
@@ -116,7 +144,7 @@ export function bulkSetSoilMoisture(balances, profiles) {
       const balance = balances[profile.id];
       if (balance != null) {
         const capacity = profile.availableWaterCapacity * profile.rootDepthInches;
-        stmt.run(profile.id, profile.zoneNumber, profile.name, balance, capacity);
+        stmt.run(profile.id, profile.zoneNumber, profile.name, balance, capacity, timestamp);
       }
     }
   });
@@ -166,13 +194,14 @@ export function getCachedWeather(source) {
 }
 
 export function setCachedWeather(source, data) {
+  const fetchedAt = formatTimestamp();
   getDB().prepare(`
     INSERT INTO weather_cache (source, data_json, fetched_at)
-    VALUES (?, ?, datetime('now'))
+    VALUES (?, ?, ?)
     ON CONFLICT(source) DO UPDATE SET
       data_json = excluded.data_json,
       fetched_at = excluded.fetched_at
-  `).run(source, JSON.stringify(data));
+  `).run(source, JSON.stringify(data), fetchedAt);
 }
 
 // --- Fertilizer ---
@@ -187,11 +216,12 @@ export function getFertilizerLog() {
 }
 
 export function logFertilizer(zoneId) {
+  const appliedAt = formatTimestamp();
   getDB().prepare(`
     INSERT INTO fertilizer_log (zone_id, applied_at)
-    VALUES (?, datetime('now'))
+    VALUES (?, ?)
     ON CONFLICT(zone_id) DO UPDATE SET applied_at = excluded.applied_at
-  `).run(zoneId);
+  `).run(zoneId, appliedAt);
 }
 
 // --- Cleanup ---
@@ -199,9 +229,11 @@ export function logFertilizer(zoneId) {
 export function cleanupOldData(retentionDays) {
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - retentionDays);
-  const cutoffStr = cutoff.toISOString();
+  const cutoffStr = formatTimestamp(cutoff);
 
-  const runsDeleted = getDB().prepare('DELETE FROM runs WHERE timestamp < ?').run(cutoffStr).changes;
+  const runsDeleted = getDB().prepare(
+    'DELETE FROM runs WHERE julianday(timestamp) < julianday(?)'
+  ).run(cutoffStr).changes;
   const usageDeleted = getDB().prepare('DELETE FROM daily_usage WHERE date < ?').run(cutoffStr.slice(0, 10)).changes;
 
   if (runsDeleted + usageDeleted > 0) {
@@ -212,15 +244,20 @@ export function cleanupOldData(retentionDays) {
 // --- Weather Discrepancy ---
 
 export function logWeatherDiscrepancy(field, ambientValue, openmeteoValue, usedValue, reason) {
+  const timestamp = formatTimestamp();
   getDB().prepare(`
-    INSERT INTO weather_discrepancy (field, ambient_value, openmeteo_value, used_value, reason)
-    VALUES (?, ?, ?, ?, ?)
-  `).run(field, ambientValue, openmeteoValue, usedValue, reason);
+    INSERT INTO weather_discrepancy (timestamp, field, ambient_value, openmeteo_value, used_value, reason)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(timestamp, field, ambientValue, openmeteoValue, usedValue, reason);
 }
 
 export function getRecentDiscrepancies(hours = 24) {
-  const since = new Date(Date.now() - hours * 3600000).toISOString();
-  return getDB().prepare('SELECT * FROM weather_discrepancy WHERE timestamp >= ? ORDER BY timestamp DESC').all(since);
+  const since = formatTimestamp(new Date(Date.now() - hours * 3600000));
+  return getDB().prepare(`
+    SELECT * FROM weather_discrepancy
+    WHERE julianday(timestamp) >= julianday(?)
+    ORDER BY julianday(timestamp) DESC, id DESC
+  `).all(since);
 }
 
 // --- Precipitation Audit ---
@@ -252,15 +289,16 @@ export function logFlowAudit(zoneId, zoneNumber, expectedGallons, actualGallons)
   const deviationPct = expectedGallons > 0
     ? ((actualGallons - expectedGallons) / expectedGallons) * 100
     : 0;
+  const timestamp = formatTimestamp();
   getDB().prepare(`
-    INSERT INTO flow_audit (zone_id, zone_number, expected_gallons, actual_gallons, deviation_pct)
-    VALUES (?, ?, ?, ?, ?)
-  `).run(zoneId, zoneNumber, expectedGallons, actualGallons, deviationPct);
+    INSERT INTO flow_audit (timestamp, zone_id, zone_number, expected_gallons, actual_gallons, deviation_pct)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(timestamp, zoneId, zoneNumber, expectedGallons, actualGallons, deviationPct);
 }
 
 export function getFlowAuditsForZone(zoneId, limit = 20) {
   return getDB().prepare(
-    'SELECT * FROM flow_audit WHERE zone_id = ? ORDER BY timestamp DESC LIMIT ?'
+    'SELECT * FROM flow_audit WHERE zone_id = ? ORDER BY julianday(timestamp) DESC, id DESC LIMIT ?'
   ).all(zoneId, limit);
 }
 
@@ -280,15 +318,16 @@ export function getFlowCalibrationSuggestions() {
 // --- Zone Tuning ---
 
 export function logTuningSuggestion(zoneId, parameter, originalValue, suggestedValue) {
+  const timestamp = formatTimestamp();
   getDB().prepare(`
-    INSERT INTO zone_tuning (zone_id, parameter, original_value, suggested_value)
-    VALUES (?, ?, ?, ?)
-  `).run(zoneId, parameter, originalValue, suggestedValue);
+    INSERT INTO zone_tuning (timestamp, zone_id, parameter, original_value, suggested_value)
+    VALUES (?, ?, ?, ?, ?)
+  `).run(timestamp, zoneId, parameter, originalValue, suggestedValue);
 }
 
 export function getUnappliedTuning() {
   return getDB().prepare(
-    'SELECT * FROM zone_tuning WHERE applied = 0 ORDER BY timestamp DESC'
+    'SELECT * FROM zone_tuning WHERE applied = 0 ORDER BY julianday(timestamp) DESC, id DESC'
   ).all();
 }
 
@@ -314,30 +353,42 @@ export function setSystemState(key, value) {
  * Acquire a run lock. Returns true if lock acquired, false if already held.
  */
 export function acquireRunLock() {
-  const lock = getSystemState('run_lock');
-  if (lock) {
-    const lockTime = new Date(lock).getTime();
-    // Stale lock detection: if lock is older than 10 minutes, force release
-    if (Date.now() - lockTime < 600000) {
-      return false;
-    }
-    log(1, 'Releasing stale run lock');
+  const acquiredAt = formatTimestamp();
+  const lockValue = `${acquiredAt}|${process.pid}-${randomUUID()}`;
+  const result = getDB().prepare(`
+    INSERT INTO system_state (key, value)
+    VALUES (?, ?)
+    ON CONFLICT(key) DO UPDATE SET value = excluded.value
+    WHERE system_state.key = excluded.key
+      AND (
+        julianday(substr(system_state.value, 1, 24)) IS NULL
+        OR (julianday(substr(excluded.value, 1, 24)) - julianday(substr(system_state.value, 1, 24))) * 86400.0 >= ?
+      )
+  `).run(RUN_LOCK_KEY, lockValue, RUN_LOCK_STALE_SECONDS);
+
+  if (result.changes !== 1) {
+    return false;
   }
-  setSystemState('run_lock', new Date().toISOString());
+
+  activeRunLockValue = lockValue;
   return true;
 }
 
 export function releaseRunLock() {
-  getDB().prepare('DELETE FROM system_state WHERE key = ?').run('run_lock');
+  if (!activeRunLockValue) return;
+  getDB().prepare('DELETE FROM system_state WHERE key = ? AND value = ?').run(RUN_LOCK_KEY, activeRunLockValue);
+  activeRunLockValue = null;
 }
 
 // --- Status ---
 
-export function getStatus(localDateStr) {
-  const lastRun = getDB().prepare('SELECT * FROM runs ORDER BY timestamp DESC LIMIT 1').get();
+export function getStatus(dateStr) {
+  const lastRun = getDB().prepare(
+    'SELECT * FROM runs ORDER BY julianday(timestamp) DESC, id DESC LIMIT 1'
+  ).get();
   const moisture = getDB().prepare('SELECT * FROM soil_moisture ORDER BY zone_number').all();
   const finance = getFinanceData();
-  const todayUsage = getDailyUsage(localDateStr || new Date().toISOString().slice(0, 10));
+  const todayUsage = getDailyUsage(dateStr || localDateStr());
 
   return { lastRun, moisture, finance, todayUsage };
 }
@@ -345,8 +396,8 @@ export function getStatus(localDateStr) {
 /**
  * Get status as a JSON-serializable object for n8n webhook consumption.
  */
-export function getStatusJSON(localDateStr) {
-  const status = getStatus(localDateStr);
+export function getStatusJSON(dateStr) {
+  const status = getStatus(dateStr);
   return {
     lastRun: status.lastRun ? {
       timestamp: status.lastRun.timestamp,

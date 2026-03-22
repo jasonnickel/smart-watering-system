@@ -5,7 +5,7 @@ import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { log } from './log.js';
-import { localDateStr } from './time.js';
+import { formatTimestamp, localDateStr, minutesSinceTimestamp } from './time.js';
 import {
   getStatus, getRunsSince, getCachedWeather,
   getRecentDiscrepancies, getFinanceData,
@@ -22,7 +22,7 @@ export function generateStatusPage() {
   try {
     const todayStr = localDateStr();
     const status = getStatus(todayStr);
-    const since = new Date(Date.now() - 86400000).toISOString();
+    const since = formatTimestamp(new Date(Date.now() - 86400000));
     const recentRuns = getRunsSince(since).filter(r => r.phase === 'DECIDE').slice(0, 5);
     const discrepancies = getRecentDiscrepancies(24);
     const finance = getFinanceData();
@@ -32,12 +32,14 @@ export function generateStatusPage() {
     let weatherSource = 'Unknown';
     let weatherColor = '#999';
     if (ambientCache) {
-      const ageMin = (Date.now() - new Date(ambientCache.fetched_at).getTime()) / 60000;
-      if (ageMin < CONFIG.degradedMode.ambientStaleThresholdMinutes) {
+      const ageMin = minutesSinceTimestamp(ambientCache.fetched_at);
+      if (Number.isFinite(ageMin) && ageMin < CONFIG.degradedMode.ambientStaleThresholdMinutes) {
         weatherSource = `Ambient Weather (${Math.round(ageMin)}m ago)`;
         weatherColor = '#4caf50';
       } else {
-        weatherSource = `STALE (${Math.round(ageMin)}m ago)`;
+        weatherSource = Number.isFinite(ageMin)
+          ? `STALE (${Math.round(ageMin)}m ago)`
+          : 'STALE (last update unreadable)';
         weatherColor = '#e53935';
       }
     }

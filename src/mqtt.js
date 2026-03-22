@@ -6,6 +6,7 @@ import { log } from './log.js';
 
 const BROKER_URL = process.env.MQTT_BROKER_URL;
 const TOPIC_PREFIX = process.env.MQTT_TOPIC_PREFIX || 'smart-water';
+const HA_DISCOVERY_PREFIX = process.env.HA_DISCOVERY_PREFIX || 'homeassistant';
 
 let client = null;
 
@@ -56,13 +57,22 @@ export async function connectMQTT() {
 /**
  * Publish a retained message to a topic.
  */
-function pub(topic, payload) {
+function pub(topic, payload, { prefix = true } = {}) {
   if (!client?.connected) return;
-  const fullTopic = `${TOPIC_PREFIX}/${topic}`;
+  const fullTopic = prefix ? `${TOPIC_PREFIX}/${topic}` : topic;
   const message = typeof payload === 'string' ? payload : JSON.stringify(payload);
   client.publish(fullTopic, message, { retain: true }, (err) => {
     if (err) log(0, `MQTT publish error on ${fullTopic}: ${err.message}`);
   });
+}
+
+/**
+ * Test helper to inject a fake MQTT client.
+ *
+ * @param {object|null} testClient
+ */
+export function setMQTTClientForTesting(testClient) {
+  client = testClient;
 }
 
 /**
@@ -129,34 +139,34 @@ export function publishHADiscovery(zones) {
   // Per-zone moisture sensors
   for (const zone of zones) {
     const id = `smart_water_zone_${zone.zone}_moisture`;
-    pub(`homeassistant/sensor/${id}/config`, {
+    pub(`${HA_DISCOVERY_PREFIX}/sensor/${id}/config`, {
       name: `${zone.name} Moisture`,
       unique_id: id,
       state_topic: `${TOPIC_PREFIX}/zone/${zone.zone}/moisture`,
       unit_of_measurement: '%',
       device_class: 'humidity',
       device,
-    });
+    }, { prefix: false });
   }
 
   // Today's usage sensor
-  pub('homeassistant/sensor/smart_water_daily_gallons/config', {
+  pub(`${HA_DISCOVERY_PREFIX}/sensor/smart_water_daily_gallons/config`, {
     name: 'Smart Water Daily Gallons',
     unique_id: 'smart_water_daily_gallons',
     state_topic: `${TOPIC_PREFIX}/status`,
     value_template: '{{ value_json.todayUsage.gallons | round(0) }}',
     unit_of_measurement: 'gal',
     device,
-  });
+  }, { prefix: false });
 
   // Weather source sensor
-  pub('homeassistant/sensor/smart_water_weather_source/config', {
+  pub(`${HA_DISCOVERY_PREFIX}/sensor/smart_water_weather_source/config`, {
     name: 'Smart Water Weather Source',
     unique_id: 'smart_water_weather_source',
     state_topic: `${TOPIC_PREFIX}/status`,
     value_template: '{{ value_json.weatherSource }}',
     device,
-  });
+  }, { prefix: false });
 
   log(1, 'HA MQTT discovery configs published');
 }

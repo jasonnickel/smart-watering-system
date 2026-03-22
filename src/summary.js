@@ -15,7 +15,7 @@ loadEnv({ path: existsSync(projectEnv) ? projectEnv : homeEnv });
 
 import CONFIG from './config.js';
 import { log } from './log.js';
-import { localDateStr, localYesterdayStr, localMonth } from './time.js';
+import { formatTimestamp, localDateStr, localYesterdayStr, localMonth, minutesSinceTimestamp } from './time.js';
 import {
   initDB, getStatus, getRunsSince, getFinanceData,
   getDailyUsage, getRecentDiscrepancies, getRecentPrecipitationAudits,
@@ -41,7 +41,7 @@ async function main() {
   }
 
   const status = getStatus(todayStr);
-  const since = new Date(Date.now() - 86400000).toISOString();
+  const since = formatTimestamp(new Date(Date.now() - 86400000));
   const recentRuns = getRunsSince(since);
   const finance = getFinanceData();
   const yesterdayUsage = getDailyUsage(yesterdayStr);
@@ -52,10 +52,12 @@ async function main() {
   const ambientCache = getCachedWeather('ambient');
   let weatherStatus = 'Unknown';
   if (ambientCache) {
-    const ageMin = (Date.now() - new Date(ambientCache.fetched_at).getTime()) / 60000;
-    weatherStatus = ageMin < CONFIG.degradedMode.ambientStaleThresholdMinutes
+    const ageMin = minutesSinceTimestamp(ambientCache.fetched_at);
+    weatherStatus = Number.isFinite(ageMin) && ageMin < CONFIG.degradedMode.ambientStaleThresholdMinutes
       ? `Ambient Weather (${Math.round(ageMin)} min ago)`
-      : `STALE (${Math.round(ageMin)} min since last update)`;
+      : Number.isFinite(ageMin)
+        ? `STALE (${Math.round(ageMin)} min since last update)`
+        : 'STALE (last update unreadable)';
   }
 
   // Overnight decisions

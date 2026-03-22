@@ -91,7 +91,13 @@ export function projectBalances(currentBalances, forecast, profiles) {
     projections[profile.id] = [];
 
     for (const day of forecast) {
-      const predictedET = calculateDailyET(day, new Date().getMonth() + 1);
+      const parsedForecastMonth = typeof day.date === 'string'
+        ? parseInt(day.date.slice(5, 7), 10)
+        : (new Date(day.date).getUTCMonth() + 1);
+      const forecastMonth = Number.isFinite(parsedForecastMonth)
+        ? parsedForecastMonth
+        : (new Date().getUTCMonth() + 1);
+      const predictedET = calculateDailyET(day, forecastMonth);
       const adjustedET = adjustETForZone(predictedET, profile);
       balance = Math.max(0, balance - adjustedET + (day.precipitation ?? 0));
       projections[profile.id].push(balance);

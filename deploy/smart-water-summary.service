@@ -4,9 +4,10 @@ After=network-online.target
 
 [Service]
 Type=oneshot
-WorkingDirectory=/opt/smart-water
+User=jason
+WorkingDirectory=/home/jason/smart-water
 ExecStart=/usr/bin/node src/summary.js
-EnvironmentFile=/root/.smart-water/.env
+EnvironmentFile=/home/jason/.smart-water/.env
 TimeoutStartSec=60
 StandardOutput=journal
 StandardError=journal

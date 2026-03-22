@@ -11,6 +11,7 @@ import {
 } from './db/state.js';
 import { log } from './log.js';
 import { notify } from './notify.js';
+import { minutesSinceTimestamp } from './time.js';
 
 const PRECIP_DISCREPANCY_THRESHOLD = 0.15; // inches
 
@@ -35,15 +36,17 @@ export async function resolveCurrentWeather() {
   // Check cache staleness
   const cached = getCachedWeather('ambient');
   if (cached) {
-    const ageMinutes = (Date.now() - new Date(cached.fetched_at).getTime()) / 60000;
-    if (ageMinutes < CONFIG.degradedMode.ambientStaleThresholdMinutes) {
+    const ageMinutes = minutesSinceTimestamp(cached.fetched_at);
+    if (Number.isFinite(ageMinutes) && ageMinutes < CONFIG.degradedMode.ambientStaleThresholdMinutes) {
       log(1, `Using cached Ambient data (${Math.round(ageMinutes)} min old)`);
       return { data: JSON.parse(cached.data_json), source: 'ambient-cached', stale: false };
     }
 
     // [1.3] Weather data quality alert - station is stale
-    await alertWeatherStale(ageMinutes);
-    log(1, `Ambient cache is stale (${Math.round(ageMinutes)} min old)`);
+    await alertWeatherStale(Number.isFinite(ageMinutes) ? ageMinutes : null);
+    log(1, Number.isFinite(ageMinutes)
+      ? `Ambient cache is stale (${Math.round(ageMinutes)} min old)`
+      : 'Ambient cache timestamp is unreadable, treating cache as stale');
   } else {
     // No cache at all - station has never reported
     await alertWeatherStale(null);
@@ -141,8 +144,8 @@ export async function resolveYesterdayWeather(dateStr) {
 export async function resolveForecast() {
   const cached = getCachedWeather('openmeteo_forecast');
   if (cached) {
-    const ageMinutes = (Date.now() - new Date(cached.fetched_at).getTime()) / 60000;
-    if (ageMinutes < CONFIG.api.openMeteo.cacheMinutes) {
+    const ageMinutes = minutesSinceTimestamp(cached.fetched_at);
+    if (Number.isFinite(ageMinutes) && ageMinutes < CONFIG.api.openMeteo.cacheMinutes) {
       return JSON.parse(cached.data_json);
     }
   }

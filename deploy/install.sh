@@ -40,7 +40,14 @@ run npm --prefix "$PROJECT_DIR" install --production
 
 # Copy systemd units
 log "Installing systemd units"
-for unit in smart-water.service smart-water.timer smart-water-watchdog.service smart-water-watchdog.timer; do
+for unit in \
+  smart-water.service \
+  smart-water.timer \
+  smart-water-watchdog.service \
+  smart-water-watchdog.timer \
+  smart-water-summary.service \
+  smart-water-summary.timer
+do
   run sudo cp "$SCRIPT_DIR/$unit" "$SERVICE_DIR/$unit"
 done
 
@@ -49,6 +56,7 @@ log "Enabling systemd timers"
 run sudo systemctl daemon-reload
 run sudo systemctl enable --now smart-water.timer
 run sudo systemctl enable --now smart-water-watchdog.timer
+run sudo systemctl enable --now smart-water-summary.timer
 
 log "Installation complete!"
 log ""
@@ -56,5 +64,6 @@ log "Next steps:"
 log "  1. Edit $ENV_DIR/.env with your API keys"
 log "  2. Test: node $PROJECT_DIR/src/cli.js run --shadow"
 log "  3. Check status: node $PROJECT_DIR/src/cli.js status"
-log "  4. View logs: journalctl -u smart-water -f"
-log "  5. When ready, remove SHADOW_MODE=true from .env"
+log "  4. View irrigation logs: journalctl -u smart-water -f"
+log "  5. View summary logs: journalctl -u smart-water-summary -f"
+log "  6. When ready, remove SHADOW_MODE=true from .env"

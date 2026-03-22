@@ -4,6 +4,7 @@ import {
   totalCapacity,
   dynamicAllowedDepletion,
   triggerLevel,
+  projectBalances,
   requiredMinutes,
   inchesAdded,
 } from '../../src/core/soil-moisture.js';
@@ -75,5 +76,37 @@ describe('Soil Moisture - Inches Added', () => {
     // 20 min * (0.5/60) in/min * 0.85 efficiency
     const expected = 20 * (0.5 / 60) * 0.85;
     assert.ok(Math.abs(added - expected) < 0.001);
+  });
+});
+
+describe('Soil Moisture - Forecast Projection', () => {
+  it('uses each forecast day month when projecting ET across month boundaries', () => {
+    const profile = { ...lawnProfile, id: 'zone-1' };
+    const capacity = totalCapacity(profile);
+    const forecast = [
+      {
+        date: '2026-03-31',
+        tmax: 90,
+        tmin: 70,
+        humidity: 30,
+        solarRadiation: 2,
+        precipitation: 0,
+      },
+      {
+        date: '2026-04-01',
+        tmax: 90,
+        tmin: 70,
+        humidity: 30,
+        solarRadiation: 2,
+        precipitation: 0,
+      },
+    ];
+
+    const projections = projectBalances({ 'zone-1': capacity }, forecast, [profile]);
+    const [marchBalance, aprilBalance] = projections['zone-1'];
+    const marchLoss = capacity - marchBalance;
+    const aprilLoss = marchBalance - aprilBalance;
+
+    assert.ok(aprilLoss > marchLoss, `Expected April ET loss (${aprilLoss}) to exceed March loss (${marchLoss})`);
   });
 });

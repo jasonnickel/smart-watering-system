@@ -3,7 +3,7 @@
 
 CREATE TABLE IF NOT EXISTS runs (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  timestamp TEXT NOT NULL DEFAULT (datetime('now')),
+  timestamp TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
   window TEXT NOT NULL,           -- 'daily', 'emergency', 'manual'
   phase TEXT NOT NULL,            -- 'DECIDE', 'COMMAND', 'VERIFY'
   decision TEXT NOT NULL,         -- 'WATER', 'SKIP'
@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS soil_moisture (
   zone_name TEXT NOT NULL,
   balance_inches REAL NOT NULL,
   total_capacity REAL NOT NULL,
-  last_updated TEXT NOT NULL DEFAULT (datetime('now'))
+  last_updated TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 
 CREATE TABLE IF NOT EXISTS finance (
@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS finance (
 CREATE TABLE IF NOT EXISTS weather_cache (
   source TEXT PRIMARY KEY,        -- 'ambient', 'openmeteo_yesterday', 'openmeteo_forecast'
   data_json TEXT NOT NULL,
-  fetched_at TEXT NOT NULL DEFAULT (datetime('now'))
+  fetched_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 
 CREATE TABLE IF NOT EXISTS daily_usage (
@@ -54,7 +54,7 @@ CREATE TABLE IF NOT EXISTS fertilizer_log (
 CREATE TABLE IF NOT EXISTS config_overrides (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL,
-  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 
 CREATE TABLE IF NOT EXISTS system_state (
@@ -64,7 +64,7 @@ CREATE TABLE IF NOT EXISTS system_state (
 
 CREATE TABLE IF NOT EXISTS weather_discrepancy (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  timestamp TEXT NOT NULL DEFAULT (datetime('now')),
+  timestamp TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
   field TEXT NOT NULL,
   ambient_value REAL,
   openmeteo_value REAL,
@@ -82,7 +82,7 @@ CREATE TABLE IF NOT EXISTS precipitation_audit (
 
 CREATE TABLE IF NOT EXISTS flow_audit (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  timestamp TEXT NOT NULL DEFAULT (datetime('now')),
+  timestamp TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
   zone_id TEXT NOT NULL,
   zone_number INTEGER,
   expected_gallons REAL,
@@ -92,7 +92,7 @@ CREATE TABLE IF NOT EXISTS flow_audit (
 
 CREATE TABLE IF NOT EXISTS zone_tuning (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  timestamp TEXT NOT NULL DEFAULT (datetime('now')),
+  timestamp TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
   zone_id TEXT NOT NULL,
   parameter TEXT NOT NULL,
   original_value REAL,
