@@ -7,25 +7,25 @@ Standalone irrigation controller that manages a Rachio sprinkler system using lo
 ```mermaid
 flowchart LR
     WX["Weather Station\n+ Forecast APIs"] --> DECIDE
-    DB[("SQLite\nSoil + Finance State")] --> DECIDE
+    DB[("SQLite\nSoil + Finance\nState")] --> DECIDE
 
     DECIDE{"Safe to water?\nSoil needs it?\nWithin budget?"}
 
     DECIDE -->|YES| RACHIO["Rachio\nWater Zones"]
-    DECIDE -->|NO| LOG["Log Skip Reason"]
+    DECIDE -->|NO| LOG["Log\nSkip Reason"]
 
     RACHIO --> DB
 
     TIMER(["Hourly\nsystemd timer"]) -.-> DECIDE
     PHONE(["Water Now\nn8n webhook"]) -.-> DECIDE
 
-    style DECIDE fill:#fff3e0,stroke:#f5a623
-    style RACHIO fill:#e8f5e9,stroke:#4caf50
-    style LOG fill:#ffebee,stroke:#e53935
-    style WX fill:#e8f4fd,stroke:#4a90e2
-    style DB fill:#e8f4fd,stroke:#4a90e2
-    style TIMER fill:#f3e5f5,stroke:#9c27b0
-    style PHONE fill:#f3e5f5,stroke:#9c27b0
+    style DECIDE fill:#e65100,stroke:#bf360c,color:#fff
+    style RACHIO fill:#2e7d32,stroke:#1b5e20,color:#fff
+    style LOG fill:#c62828,stroke:#b71c1c,color:#fff
+    style WX fill:#1565c0,stroke:#0d47a1,color:#fff
+    style DB fill:#1565c0,stroke:#0d47a1,color:#fff
+    style TIMER fill:#6a1b9a,stroke:#4a148c,color:#fff
+    style PHONE fill:#6a1b9a,stroke:#4a148c,color:#fff
 ```
 
 ## What it does
