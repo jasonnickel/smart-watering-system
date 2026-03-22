@@ -49,6 +49,28 @@ Every hour, the system checks whether your lawn needs water by running a five-st
 
 If watering is needed, a final real-time rain check confirms it's not actively raining right now. Then the system sends the command to Rachio, verifies it was accepted, and updates all state. If not, it logs the skip reason and moves on.
 
+## How It Compares
+
+Several open-source projects tackle ET-based irrigation. Here's how they differ:
+
+| | Smart Water | [HAsmartirrigation](https://github.com/jeroenterheerdt/HAsmartirrigation) | [homebridge-smart-irrigation](https://github.com/MTry/homebridge-smart-irrigation) | [OpenSprinkler Weather](https://github.com/OpenSprinkler/OpenSprinkler-Weather) |
+|---|:---:|:---:|:---:|:---:|
+| **Standalone** (no platform required) | Yes | No (Home Assistant) | No (Homebridge) | No (OpenSprinkler HW) |
+| **Rachio API control** | Yes | No | No | No |
+| **Local weather station** (primary source) | Yes | No | No | No |
+| **Weather fallback chain** | Yes | No | No | No |
+| **Weather cross-validation** | Yes | No | No | No |
+| **Real-time rain abort** | Yes | No | No | No |
+| **ET method** | Hargreaves | FAO-56 PyETo | Penman-Monteith | ETo % scaling |
+| **Per-zone soil moisture budget** | Yes | Yes | No | No |
+| **Smart soak cycles** | Yes | No | No | No |
+| **Cost / budget tracking** | Yes | No | No | No |
+| **MQTT / HA integration** | Optional | Native | Native | No |
+| **Daily summary email** | Yes | No | No | No |
+| **Stars** | New | 475 | 86 | 66 |
+
+HAsmartirrigation is the most mature project in this space and a great option if you already run Home Assistant. This project targets the gap for Rachio owners who want a standalone, inspectable decision engine without a platform dependency - and specifically addresses the documented failure modes below.
+
 ## Rachio's Problems, Our Solutions
 
 This project is aimed at homeowners who want an inspectable, self-hosted decision engine for common smart-irrigation pain points: stale weather data, opaque skip decisions, cloud dependency, and limited observability. The sections below describe what this repo actually does today.
