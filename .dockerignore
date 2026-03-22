@@ -1,0 +1,11 @@
+node_modules
+.git
+*.db
+*.db-wal
+*.db-shm
+.env
+docs/
+tests/
+deploy/
+ROADMAP.md
+ARCHITECTURE_OPTIONS.md

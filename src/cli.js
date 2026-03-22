@@ -69,6 +69,9 @@ async function main() {
     case 'doctor':
       process.exit(await runDoctor());
       break;
+    case 'web':
+      await import('./web.js'); // web.js starts its own server
+      return;
     case 'setup':
       await runSetup();
       return;
@@ -90,6 +93,7 @@ async function main() {
       console.log('    run [--shadow] Run the hourly decision cycle');
       console.log('    water          Manual watering trigger');
       console.log('    status [--json] Show current system status');
+      console.log('    web            Start the browser-based UI (port 3000)');
       console.log('    cleanup        Remove data older than 90 days');
       console.log('');
       process.exit(command === 'help' || command === '--help' ? 0 : 1);

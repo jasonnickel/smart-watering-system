@@ -1,0 +1,17 @@
+[Unit]
+Description=Smart Water System - Web UI
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/smart-water
+ExecStart=/usr/bin/node src/web.js
+EnvironmentFile=/root/.smart-water/.env
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=smart-water-web
+
+[Install]
+WantedBy=multi-user.target
