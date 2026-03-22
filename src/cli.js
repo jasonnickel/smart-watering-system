@@ -29,6 +29,9 @@ import { getLiveRainCheck } from './api/ambient.js';
 import { updateDailyBalances, inchesAdded, totalCapacity } from './core/soil-moisture.js';
 import { getWateringDecision, getEmergencyCoolingDecision, currentWindow } from './core/rule-engine.js';
 import { calculateCost, needsBillingReset } from './core/finance.js';
+import { runDoctor } from './doctor.js';
+import { runSetup } from './setup.js';
+import { runGoLive } from './go-live.js';
 import { generateStatusPage } from './status-page.js';
 import { analyzeTuning } from './core/tuning.js';
 import { logFlowAudit, getStatusJSON as getStatusJSONFromDB } from './db/state.js';
@@ -63,9 +66,33 @@ async function main() {
     case 'cleanup':
       cleanupOldData(90);
       break;
+    case 'doctor':
+      process.exit(await runDoctor());
+      break;
+    case 'setup':
+      await runSetup();
+      return;
+    case 'go-live':
+      await runGoLive();
+      return;
     default:
-      console.log('Usage: smart-water [run|water|status|cleanup] [--shadow] [--json]');
-      process.exit(1);
+      console.log('');
+      console.log('  Smart Water System');
+      console.log('');
+      console.log('  Usage: smart-water <command> [options]');
+      console.log('');
+      console.log('  Getting started:');
+      console.log('    setup          Configure API keys and zones interactively');
+      console.log('    doctor         Check system health and connectivity');
+      console.log('    go-live        Switch from shadow mode to live mode');
+      console.log('');
+      console.log('  Daily operations:');
+      console.log('    run [--shadow] Run the hourly decision cycle');
+      console.log('    water          Manual watering trigger');
+      console.log('    status [--json] Show current system status');
+      console.log('    cleanup        Remove data older than 90 days');
+      console.log('');
+      process.exit(command === 'help' || command === '--help' ? 0 : 1);
   }
 
   // [FIX P1] Exit nonzero when command/verify failed so watchdog catches it
