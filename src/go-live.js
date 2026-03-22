@@ -4,11 +4,11 @@
 
 import './env.js';
 import { createInterface } from 'node:readline';
-import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import CONFIG from './config.js';
 import { initDB, getRunsSince } from './db/state.js';
+import { getEnvFilePath, readShadowMode, writeEnvValue } from './env.js';
 
 const BOLD = '\x1b[1m';
 const GREEN = '\x1b[32m';
@@ -17,7 +17,7 @@ const RED = '\x1b[31m';
 const RESET = '\x1b[0m';
 
 const DB_PATH = process.env.DB_PATH || join(homedir(), '.smart-water', 'smart-water.db');
-const ENV_PATH = join(homedir(), '.smart-water', '.env');
+const ENV_PATH = getEnvFilePath();
 
 const rl = createInterface({ input: process.stdin, output: process.stdout });
 function confirm(question) {
@@ -32,7 +32,7 @@ export async function runGoLive() {
   console.log(`\n${BOLD}Smart Water System - Go Live${RESET}\n`);
 
   // Check current mode
-  if (!CONFIG.system.shadowMode && process.env.SHADOW_MODE !== 'true') {
+  if (!readShadowMode()) {
     console.log(`${GREEN}System is already in live mode.${RESET}`);
     rl.close();
     return;
@@ -115,12 +115,10 @@ export async function runGoLive() {
 
   // Update .env
   try {
-    let envContent = readFileSync(ENV_PATH, 'utf-8');
-    envContent = envContent.replace(/^SHADOW_MODE=true$/m, 'SHADOW_MODE=false');
-    writeFileSync(ENV_PATH, envContent);
+    writeEnvValue('SHADOW_MODE', 'false');
     console.log(`\n${GREEN}Live mode enabled.${RESET} SHADOW_MODE=false written to ${ENV_PATH}`);
     console.log(`\nThe system will actuate Rachio on the next watering decision.`);
-    console.log(`To switch back: edit ${ENV_PATH} and set SHADOW_MODE=true\n`);
+    console.log(`To switch back: run ${BOLD}smart-water shadow${RESET}\n`);
   } catch (err) {
     console.log(`\n${RED}Could not update .env: ${err.message}${RESET}`);
     console.log(`Manually set SHADOW_MODE=false in ${ENV_PATH}\n`);

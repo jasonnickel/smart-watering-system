@@ -1,0 +1,24 @@
+{
+  "name": "Smart Water System",
+  "short_name": "Smart Water",
+  "description": "Irrigation controller with ET-based soil moisture management",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#edf2f7",
+  "theme_color": "#0b5fff",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icon-192.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

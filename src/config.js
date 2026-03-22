@@ -5,6 +5,16 @@
 import './env.js';
 import { loadZoneConfig } from './yaml-loader.js';
 
+function envNumber(name, fallback) {
+  const raw = process.env[name];
+  if (raw == null || raw === '') {
+    return fallback;
+  }
+
+  const parsed = parseFloat(raw);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
 const CONFIG = {
   api: {
     ambientWeather: {
@@ -28,9 +38,9 @@ const CONFIG = {
   },
 
   location: {
-    lat: 39.73220,
-    lon: -105.21940,
-    timezone: 'America/Denver',
+    lat: envNumber('LAT', 39.73220),
+    lon: envNumber('LON', -105.21940),
+    timezone: process.env.LOCATION_TIMEZONE || 'America/Denver',
   },
 
   notifications: {

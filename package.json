@@ -34,6 +34,12 @@
     "start": "node src/cli.js run",
     "test": "node --test tests/**/*.test.js",
     "shadow": "node src/cli.js run --shadow",
+    "enable-shadow": "node src/cli.js shadow",
+    "doctor": "node src/cli.js doctor",
+    "setup": "node src/cli.js setup",
+    "go-live": "node src/cli.js go-live",
+    "web": "node src/cli.js web",
+    "smoke-test": "node src/cli.js smoke-test --zone 1 --minutes 1",
     "status": "node src/cli.js status",
     "water": "node src/cli.js water"
   },
