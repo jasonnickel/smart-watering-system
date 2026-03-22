@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 import {
   totalCapacity,
   dynamicAllowedDepletion,
-  triggerLevel,
   projectBalances,
   requiredMinutes,
   inchesAdded,

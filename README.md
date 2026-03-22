@@ -156,13 +156,14 @@ The daily summary job gives you the overnight recap without needing to touch a t
 - Notification delivery and summary delivery currently go through n8n-style webhooks; built-in SMTP delivery is not implemented.
 - Flow-meter-assisted calibration is scaffolded but not fully wired into the main execution loop.
 - ET correction factors can be stored and read, but automatic ET drift analysis is not complete yet.
-- The test suite now covers core logic plus a few integration edges, but it is still not a substitute for a live smoke test against your own Rachio account, MQTT broker, and timers.
+- The test suite (89 tests) covers core logic, web UI auth/helpers, and integration edges, but it is still not a substitute for a live smoke test against your own Rachio account, MQTT broker, and timers.
 
 ## Project Structure
 
 ```
 src/
   cli.js              Entry point - run/water/status/cleanup commands
+  web.js              Web UI bootstrap (server setup only)
   config.js            Configuration with env var support
   weather.js           Weather coordinator with cross-validation and fallback
   watchdog.js          Missed-run alert checker
@@ -173,6 +174,14 @@ src/
   time.js              Local timezone helpers (America/Denver)
   log.js               Structured logger for systemd journal
   yaml-loader.js       YAML zone config loader
+  env.js               Environment file read/write helpers
+  explain.js           Plain English decision explanations
+  web-forms.js         Form data parsing and zone config serialization
+  web/
+    auth.js            Session-based authentication and cookie handling
+    html.js            HTML helpers, layout shell, and reusable UI components
+    pages.js           Page renderers (dashboard, logs, zones, settings, setup, charts, login)
+    routes.js          HTTP request handler and route dispatch
   core/
     et.js              Evapotranspiration calculations (Hargreaves variant)
     soil-moisture.js   Per-zone moisture balance tracking
@@ -188,8 +197,14 @@ src/
   db/
     schema.sql         SQLite table definitions (12 tables)
     state.js           All database read/write operations
+  public/
+    styles.css         Cacheable CSS stylesheet for the web UI
+    manifest.json      PWA manifest
+    sw.js              Service worker for offline support
+    icon-192.svg       App icon (small)
+    icon-512.svg       App icon (large)
 zones.yaml             Zone configuration (edit this for your yard)
-tests/                 42 tests covering core logic and selected integration paths
+tests/                 89 tests covering core logic, web UI, and integration paths
 deploy/
   smart-water.service  systemd oneshot service
   smart-water.timer    Hourly timer
@@ -197,6 +212,7 @@ deploy/
   smart-water-summary.service/timer
   install.sh           Deployment script
   n8n-workflows/       n8n integration design
+eslint.config.js       ESLint flat config - catches real bugs, no style opinions
 ```
 
 ## Requirements
@@ -268,6 +284,21 @@ journalctl -u smart-water -f
 | `node src/cli.js status --json` | Machine-readable status for n8n/scripts |
 | `node src/cli.js web` | Local browser UI for status, run history, guided setup, zones, and settings |
 | `node src/cli.js cleanup` | Remove data older than 90 days |
+
+## Development
+
+```bash
+# Run the test suite (89 tests, Node.js built-in test runner)
+npm test
+
+# Lint the codebase (ESLint flat config, zero style opinions)
+npm run lint
+
+# Run lint + tests together
+npm run check
+```
+
+The web UI is organized into focused modules under `src/web/` - auth, HTML helpers, page renderers, and route dispatch are separated so each file stays under 500 lines. CSS is served as a cacheable static file from `src/public/styles.css` rather than inlined in every response.
 
 ## Configuration
 

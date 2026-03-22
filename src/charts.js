@@ -1,12 +1,10 @@
 // Historical chart data endpoints and page renderer
 // Uses Chart.js via CDN for client-side rendering
 
-import { localDateStr } from './time.js';
 import {
-  getDB, getFinanceData, getSoilMoisture, getRunsSince,
+  getDB, getRunsSince,
   getRecentPrecipitationAudits,
 } from './db/state.js';
-import CONFIG from './config.js';
 
 /**
  * Get moisture history from soil_moisture table updates.

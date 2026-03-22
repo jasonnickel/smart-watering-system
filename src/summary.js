@@ -14,7 +14,7 @@ import { formatTimestamp, localDateStr, localYesterdayStr, localMonth, minutesSi
 import {
   initDB, getStatus, getRunsSince, getFinanceData,
   getDailyUsage, getRecentDiscrepancies, getRecentPrecipitationAudits,
-  getSystemState, getCachedWeather,
+  getCachedWeather,
 } from './db/state.js';
 import { sendSummaryEmail } from './notify.js';
 

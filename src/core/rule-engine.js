@@ -6,7 +6,6 @@ import CONFIG from '../config.js';
 import { parseStoredTimestamp } from '../time.js';
 import {
   totalCapacity,
-  dynamicAllowedDepletion,
   triggerLevel,
   requiredMinutes,
   projectBalances,

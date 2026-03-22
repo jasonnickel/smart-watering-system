@@ -33,6 +33,8 @@
   "scripts": {
     "start": "node src/cli.js run",
     "test": "node --test tests/**/*.test.js",
+    "lint": "eslint .",
+    "check": "eslint . && node --test tests/**/*.test.js",
     "shadow": "node src/cli.js run --shadow",
     "enable-shadow": "node src/cli.js shadow",
     "doctor": "node src/cli.js doctor",
@@ -54,5 +56,7 @@
   "optionalDependencies": {
     "mqtt": "^5.0.0"
   },
-  "devDependencies": {}
+  "devDependencies": {
+    "eslint": "^10.1.0"
+  }
 }
