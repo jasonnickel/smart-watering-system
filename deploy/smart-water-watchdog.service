@@ -1,0 +1,13 @@
+[Unit]
+Description=Smart Water System - Watchdog Alert
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=jason
+WorkingDirectory=/home/jason/smart-water
+ExecStart=/usr/bin/node src/watchdog.js
+EnvironmentFile=/home/jason/.smart-water/.env
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=smart-water-watchdog

@@ -1,0 +1,10 @@
+[Unit]
+Description=Smart Water System - Hourly Irrigation Check
+
+[Timer]
+OnCalendar=*-*-* *:00:00
+RandomizedDelaySec=120
+Persistent=true
+
+[Install]
+WantedBy=timers.target

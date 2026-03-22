@@ -1,0 +1,9 @@
+[Unit]
+Description=Smart Water System - Watchdog (runs at 2am daily)
+
+[Timer]
+OnCalendar=*-*-* 02:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

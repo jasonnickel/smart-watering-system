@@ -1,0 +1,221 @@
+// SQLite state management
+// All persistent state reads/writes go through this module.
+
+import Database from 'better-sqlite3';
+import { readFileSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { mkdirSync, existsSync } from 'node:fs';
+import { log } from '../log.js';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const SCHEMA_PATH = join(__dirname, 'schema.sql');
+
+let db = null;
+
+/**
+ * Initialize the database connection and apply schema.
+ *
+ * @param {string} dbPath - Path to SQLite database file
+ * @returns {Database} The database instance
+ */
+export function initDB(dbPath) {
+  const dir = dirname(dbPath);
+  if (!existsSync(dir)) {
+    mkdirSync(dir, { recursive: true });
+  }
+
+  db = new Database(dbPath);
+  db.pragma('journal_mode = WAL');
+  db.pragma('busy_timeout = 5000');
+
+  const schema = readFileSync(SCHEMA_PATH, 'utf-8');
+  db.exec(schema);
+
+  // Ensure finance singleton exists
+  db.prepare(`
+    INSERT OR IGNORE INTO finance (id, cumulative_gallons, monthly_gallons, monthly_cost)
+    VALUES (1, 0, 0, 0)
+  `).run();
+
+  log(1, `Database initialized at ${dbPath}`);
+  return db;
+}
+
+/**
+ * Get the active database instance.
+ */
+export function getDB() {
+  if (!db) throw new Error('Database not initialized - call initDB first');
+  return db;
+}
+
+// --- Runs ---
+
+export function logRun({ window, phase, decision, reason, zones, gallons, cost, success, shadow, error }) {
+  return getDB().prepare(`
+    INSERT INTO runs (window, phase, decision, reason, zones_json, total_gallons, total_cost, success, shadow, error_message)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    window, phase, decision, reason,
+    zones ? JSON.stringify(zones) : null,
+    gallons ?? 0, cost ?? 0,
+    success ? 1 : 0, shadow ? 1 : 0,
+    error ?? null
+  );
+}
+
+export function getLastSuccessfulRun(window) {
+  return getDB().prepare(`
+    SELECT * FROM runs
+    WHERE window = ? AND success = 1 AND phase = 'VERIFY'
+    ORDER BY timestamp DESC LIMIT 1
+  `).get(window);
+}
+
+export function getRunsSince(since) {
+  return getDB().prepare(`
+    SELECT * FROM runs WHERE timestamp >= ? ORDER BY timestamp DESC
+  `).all(since);
+}
+
+// --- Soil Moisture ---
+
+export function getSoilMoisture() {
+  const rows = getDB().prepare('SELECT * FROM soil_moisture').all();
+  const balances = {};
+  for (const row of rows) {
+    balances[row.zone_id] = row.balance_inches;
+  }
+  return balances;
+}
+
+export function setSoilMoisture(zoneId, zoneNumber, zoneName, balanceInches, totalCapacity) {
+  getDB().prepare(`
+    INSERT INTO soil_moisture (zone_id, zone_number, zone_name, balance_inches, total_capacity, last_updated)
+    VALUES (?, ?, ?, ?, ?, datetime('now'))
+    ON CONFLICT(zone_id) DO UPDATE SET
+      balance_inches = excluded.balance_inches,
+      total_capacity = excluded.total_capacity,
+      last_updated = excluded.last_updated
+  `).run(zoneId, zoneNumber, zoneName, balanceInches, totalCapacity);
+}
+
+export function bulkSetSoilMoisture(balances, profiles) {
+  const stmt = getDB().prepare(`
+    INSERT INTO soil_moisture (zone_id, zone_number, zone_name, balance_inches, total_capacity, last_updated)
+    VALUES (?, ?, ?, ?, ?, datetime('now'))
+    ON CONFLICT(zone_id) DO UPDATE SET
+      balance_inches = excluded.balance_inches,
+      total_capacity = excluded.total_capacity,
+      last_updated = excluded.last_updated
+  `);
+
+  const tx = getDB().transaction(() => {
+    for (const profile of profiles) {
+      const balance = balances[profile.id];
+      if (balance != null) {
+        const capacity = profile.availableWaterCapacity * profile.rootDepthInches;
+        stmt.run(profile.id, profile.zoneNumber, profile.name, balance, capacity);
+      }
+    }
+  });
+
+  tx();
+}
+
+// --- Finance ---
+
+export function getFinanceData() {
+  return getDB().prepare('SELECT * FROM finance WHERE id = 1').get();
+}
+
+export function updateFinance(data) {
+  getDB().prepare(`
+    UPDATE finance SET
+      cumulative_gallons = ?,
+      monthly_gallons = ?,
+      monthly_cost = ?,
+      last_reset = ?
+    WHERE id = 1
+  `).run(data.cumulative_gallons, data.monthly_gallons, data.monthly_cost, data.last_reset);
+}
+
+// --- Daily Usage ---
+
+export function getDailyUsage(dateStr) {
+  return getDB().prepare('SELECT * FROM daily_usage WHERE date = ?').get(dateStr)
+    || { date: dateStr, gallons: 0, cost: 0, zones_json: '{}' };
+}
+
+export function updateDailyUsage(dateStr, gallons, cost, zonesJson) {
+  getDB().prepare(`
+    INSERT INTO daily_usage (date, gallons, cost, zones_json)
+    VALUES (?, ?, ?, ?)
+    ON CONFLICT(date) DO UPDATE SET
+      gallons = gallons + excluded.gallons,
+      cost = cost + excluded.cost,
+      zones_json = excluded.zones_json
+  `).run(dateStr, gallons, cost, zonesJson);
+}
+
+// --- Weather Cache ---
+
+export function getCachedWeather(source) {
+  return getDB().prepare('SELECT * FROM weather_cache WHERE source = ?').get(source);
+}
+
+export function setCachedWeather(source, data) {
+  getDB().prepare(`
+    INSERT INTO weather_cache (source, data_json, fetched_at)
+    VALUES (?, ?, datetime('now'))
+    ON CONFLICT(source) DO UPDATE SET
+      data_json = excluded.data_json,
+      fetched_at = excluded.fetched_at
+  `).run(source, JSON.stringify(data));
+}
+
+// --- Fertilizer ---
+
+export function getFertilizerLog() {
+  const rows = getDB().prepare('SELECT * FROM fertilizer_log').all();
+  const result = {};
+  for (const row of rows) {
+    result[row.zone_id] = row.applied_at;
+  }
+  return result;
+}
+
+export function logFertilizer(zoneId) {
+  getDB().prepare(`
+    INSERT INTO fertilizer_log (zone_id, applied_at)
+    VALUES (?, datetime('now'))
+    ON CONFLICT(zone_id) DO UPDATE SET applied_at = excluded.applied_at
+  `).run(zoneId);
+}
+
+// --- Cleanup ---
+
+export function cleanupOldData(retentionDays) {
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - retentionDays);
+  const cutoffStr = cutoff.toISOString();
+
+  const runsDeleted = getDB().prepare('DELETE FROM runs WHERE timestamp < ?').run(cutoffStr).changes;
+  const usageDeleted = getDB().prepare('DELETE FROM daily_usage WHERE date < ?').run(cutoffStr.slice(0, 10)).changes;
+
+  if (runsDeleted + usageDeleted > 0) {
+    log(1, `Cleanup: removed ${runsDeleted} runs, ${usageDeleted} daily_usage records`);
+  }
+}
+
+// --- Status ---
+
+export function getStatus() {
+  const lastRun = getDB().prepare('SELECT * FROM runs ORDER BY timestamp DESC LIMIT 1').get();
+  const moisture = getDB().prepare('SELECT * FROM soil_moisture ORDER BY zone_number').all();
+  const finance = getFinanceData();
+  const todayUsage = getDailyUsage(new Date().toISOString().slice(0, 10));
+
+  return { lastRun, moisture, finance, todayUsage };
+}

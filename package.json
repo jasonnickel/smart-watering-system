@@ -1,0 +1,25 @@
+{
+  "name": "smart-water",
+  "version": "1.0.0",
+  "description": "Intelligent irrigation controller for Rachio - ET-based soil moisture management",
+  "type": "module",
+  "main": "src/cli.js",
+  "bin": {
+    "smart-water": "src/cli.js"
+  },
+  "scripts": {
+    "start": "node src/cli.js run",
+    "test": "node --test tests/**/*.test.js",
+    "shadow": "node src/cli.js run --shadow",
+    "status": "node src/cli.js status",
+    "water": "node src/cli.js water"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.0.0",
+    "dotenv": "^16.4.0"
+  },
+  "devDependencies": {}
+}
