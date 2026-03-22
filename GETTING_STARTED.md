@@ -2,22 +2,83 @@
 
 This guide assumes you have a Rachio sprinkler controller and optionally an Ambient Weather station. No coding experience required.
 
-## What you'll need before starting
+## Before You Start: Getting Your API Keys
 
-1. Your **Rachio API key**
-   - Open the Rachio app or go to rachio.com
-   - Account Settings -> Get API Key
-   - Copy the key (looks like: `REDACTED-RACHIO-API-KEY`)
+You need to gather a few keys before installing. This section walks through exactly where to find each one.
 
-2. Your **Ambient Weather keys** (optional but recommended)
-   - Go to ambientweather.net
-   - My Account -> API Keys
-   - You need three things: API Key, Application Key, and your station's MAC address
-   - If you don't have a weather station, the system will use OpenMeteo forecast data instead
+### Rachio API Key (required)
 
-3. A computer or server to run the system on
-   - Any Linux machine, Proxmox LXC, Raspberry Pi, or Docker host
-   - Needs Node.js 20+ (or Docker)
+Your Rachio API key lets this system talk to your sprinkler controller. Here's how to get it:
+
+1. Open a web browser and go to **https://app.rach.io**
+2. Log in with the same email/password you use in the Rachio phone app
+3. Click your **name or profile icon** in the bottom-left corner
+4. Click **Account Settings**
+5. Scroll down to the section labeled **API Access**
+6. Click **Get API Key**
+7. A long string of letters and numbers will appear (example: `REDACTED-RACHIO-API-KEY`)
+8. Copy this entire string - you'll paste it during setup
+
+If you don't see an API Access section, your Rachio firmware may need an update. Open the Rachio phone app and check for updates under Device Settings.
+
+### Ambient Weather Keys (optional but recommended)
+
+If you have an Ambient Weather station in your yard, this system can read directly from it for hyper-accurate local conditions. You need three things: an API Key, an Application Key, and your station's MAC address.
+
+**If you don't have a weather station**, skip this section entirely. The system will use OpenMeteo forecast data instead - it works fine, just less precise.
+
+**Getting your API Key and Application Key:**
+
+1. Go to **https://ambientweather.net** and log in
+2. Click your **name** in the top-right corner
+3. Click **My Account** from the dropdown
+4. On the account page, look for a tab or link labeled **API Keys**
+5. You should see two keys listed:
+   - **API Key** - a long string of letters and numbers (example: `REDACTED-AMBIENT-API...`)
+   - **Application Key** - another long string (example: `REDACTED-AMBIENT-APP...`)
+6. If no keys are listed, click **Create API Key** and **Create Application Key**
+7. Copy both strings - you'll paste them during setup
+
+**Finding your station's MAC address:**
+
+1. While still on ambientweather.net, click **My Devices** (or **Devices** in the nav bar)
+2. Click on your weather station's name
+3. Look for **MAC Address** in the device details (example: `AA:BB:CC:DD:EE:FF`)
+4. Copy this value - you'll paste it during setup
+
+The MAC address is also printed on a sticker on the back of your weather station's indoor console unit if you can't find it online.
+
+### Your Zone Layout (can adjust later)
+
+The system comes pre-configured with 9 zones. You can adjust this later, but it helps to know:
+
+- **How many zones** your Rachio controls (check the Rachio app under Zones)
+- **Zone types** - which are lawn (spray/rotor heads) and which are drip irrigation
+- **Approximate area** of each zone in square feet (a rough guess is fine to start)
+
+Don't worry about getting this perfect. The defaults work for most yards, and you can fine-tune through the web UI after the system is running. The system adapts over time.
+
+**Estimating zone area if you have no idea:**
+- Small front yard section: 200-400 sq ft
+- Typical side yard: 200-300 sq ft
+- Full backyard: 400-800 sq ft
+- Drip bed: 100-300 sq ft
+- Google Earth (earth.google.com) has a measurement tool - search your address, right-click, and select "Measure distance" to outline each zone
+
+### Where to Run It
+
+You need a computer that stays on. Any of these work:
+
+- **Synology/QNAP NAS** - If it supports Docker, use the Docker install path
+- **Proxmox LXC or VM** - Use the direct install path
+- **Raspberry Pi** - Use the direct install path (Pi 4 or newer recommended)
+- **Unraid** - Use the Docker install path
+- **Any always-on Linux machine** - Either path works
+- **Old laptop running Ubuntu** - Either path works
+
+The system uses very little resources (less than 100MB RAM, negligible CPU). It only runs actively for a few seconds each hour.
+
+---
 
 ## Option A: Docker (Easiest)
 
