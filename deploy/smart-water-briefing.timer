@@ -1,0 +1,10 @@
+[Unit]
+Description=Smart Water System - Weekly Intelligence Briefing Timer
+
+[Timer]
+OnCalendar=Sun *-*-* 07:00:00
+Persistent=true
+AccuracySec=5min
+
+[Install]
+WantedBy=timers.target
