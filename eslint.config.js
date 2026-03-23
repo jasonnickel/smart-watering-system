@@ -35,6 +35,8 @@ export default [
         Response: 'readonly',
         navigator: 'readonly',
         AbortController: 'readonly',
+        AbortSignal: 'readonly',
+        URLSearchParams: 'readonly',
       },
     },
     rules: {
