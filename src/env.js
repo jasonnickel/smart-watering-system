@@ -35,8 +35,10 @@ export function readEnvValue(key) {
 }
 
 export function upsertEnvValue(content, key, value) {
+  // Strip newlines and carriage returns to prevent env injection
+  const safeValue = String(value).replace(/[\r\n]/g, '');
   const pattern = new RegExp(`^${escapeRegex(key)}=.*$`, 'm');
-  const nextLine = `${key}=${value}`;
+  const nextLine = `${key}=${safeValue}`;
 
   if (pattern.test(content)) {
     return content.replace(pattern, nextLine);
