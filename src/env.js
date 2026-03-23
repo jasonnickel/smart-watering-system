@@ -1,11 +1,13 @@
 import { config as loadEnv, parse as parseEnv } from 'dotenv';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { homedir } from 'node:os';
+import { dirname } from 'node:path';
+import {
+  TAPROOT_ENV_PATH,
+  getDefaultEnvPath,
+} from './paths.js';
 
-export const PROJECT_ENV_PATH = join(import.meta.dirname, '..', '.env');
-export const HOME_ENV_PATH = join(homedir(), '.taproot', '.env');
-export const ACTIVE_ENV_PATH = existsSync(PROJECT_ENV_PATH) ? PROJECT_ENV_PATH : HOME_ENV_PATH;
+export const HOME_ENV_PATH = TAPROOT_ENV_PATH;
+export const ACTIVE_ENV_PATH = getDefaultEnvPath();
 export const MANAGED_ENV_KEYS = [
   'RACHIO_API_KEY',
   'AMBIENT_API_KEY',
@@ -27,6 +29,8 @@ export const MANAGED_ENV_KEYS = [
   'LOCATION_ADDRESS',
   'WEB_HOST',
   'WEB_PORT',
+  'PUBLIC_BASE_URL',
+  'WEB_STARTUP_SERVICE',
   'WEB_UI_PASSWORD',
 ];
 

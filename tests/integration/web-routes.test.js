@@ -68,6 +68,16 @@ afterEach(async () => {
 });
 
 describe('Web routes', () => {
+  it('serves a dedicated guided setup page', async () => {
+    const baseUrl = await startServer();
+    const response = await fetch(`${baseUrl}/setup`);
+
+    assert.equal(response.status, 200);
+    const html = await response.text();
+    assert.match(html, /Guided Setup/);
+    assert.match(html, /Bookmark This URL/);
+  });
+
   it('serves login assets even when auth is enabled', async () => {
     const baseUrl = await startServer({ password: 'secret' });
     const response = await fetch(`${baseUrl}/styles.css`, { redirect: 'manual' });
@@ -347,6 +357,10 @@ describe('Web routes', () => {
       lon: CONFIG.location.lon,
       timezone: CONFIG.location.timezone,
       address: CONFIG.location.address,
+      webHost: process.env.WEB_HOST,
+      webPort: process.env.WEB_PORT,
+      publicBaseUrl: process.env.PUBLIC_BASE_URL,
+      startupService: process.env.WEB_STARTUP_SERVICE,
     };
 
     try {
@@ -362,6 +376,10 @@ describe('Web routes', () => {
           location_timezone: 'America/Chicago',
           debug_level: '1',
           shadow_mode: 'true',
+          dashboard_access: 'network',
+          web_port: '4000',
+          public_base_url: 'http://taproot.local:4000',
+          web_startup_service: 'manual',
         }),
         redirect: 'manual',
       });
@@ -372,12 +390,24 @@ describe('Web routes', () => {
       assert.equal(CONFIG.location.lat, 40.015);
       assert.equal(CONFIG.location.lon, -105.2705);
       assert.equal(CONFIG.location.timezone, 'America/Chicago');
+      assert.equal(process.env.WEB_HOST, '0.0.0.0');
+      assert.equal(process.env.WEB_PORT, '4000');
+      assert.equal(process.env.PUBLIC_BASE_URL, 'http://taproot.local:4000');
+      assert.equal(process.env.WEB_STARTUP_SERVICE, 'manual');
     } finally {
       CONFIG.api.rachio.apiKey = original.key;
       CONFIG.location.address = original.address;
       CONFIG.location.lat = original.lat;
       CONFIG.location.lon = original.lon;
       CONFIG.location.timezone = original.timezone;
+      if (original.webHost == null) delete process.env.WEB_HOST;
+      else process.env.WEB_HOST = original.webHost;
+      if (original.webPort == null) delete process.env.WEB_PORT;
+      else process.env.WEB_PORT = original.webPort;
+      if (original.publicBaseUrl == null) delete process.env.PUBLIC_BASE_URL;
+      else process.env.PUBLIC_BASE_URL = original.publicBaseUrl;
+      if (original.startupService == null) delete process.env.WEB_STARTUP_SERVICE;
+      else process.env.WEB_STARTUP_SERVICE = original.startupService;
     }
   });
 });

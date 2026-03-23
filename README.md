@@ -167,12 +167,15 @@ npm install --production
 
 node src/cli.js setup      # Configure API keys and zones
 node src/cli.js doctor     # Verify connectivity
-node src/cli.js web        # Web UI at http://127.0.0.1:3000
+node src/cli.js web        # Temporary web UI
+node src/cli.js service install-web  # Keep the dashboard available at a stable bookmark URL
 node src/cli.js run --shadow  # Test in shadow mode
 
 bash deploy/install.sh     # Install systemd timers
 node src/cli.js go-live    # Switch to live mode after validation
 ```
+
+Taproot stores its runtime state in `~/.taproot`. If it finds an older `~/.smart-water` install, it automatically imports the legacy env, database, and supporting files on startup when the Taproot copies are missing.
 
 ### AI Features
 
@@ -239,6 +242,8 @@ node src/cli.js water                           # Manual watering
 node src/cli.js status                          # Current state
 node src/cli.js status --json                   # Machine-readable status
 node src/cli.js web                             # Start web UI
+node src/cli.js service install-web             # Install or refresh startup service for dashboard
+node src/cli.js service status-web              # Show startup service status
 node src/cli.js cleanup                         # Remove data > 90 days
 ```
 
@@ -248,7 +253,7 @@ node src/cli.js cleanup                         # Remove data > 90 days
 | ---- | ------- |
 | `zones.yaml` | Zone profiles - type, sun exposure, area, priority, soil profile |
 | `rates.yaml` | Utility rate schedule - tiers, fixed charges, AWC threshold |
-| `~/.taproot/.env` | API keys, location, MQTT, notifications, AI config |
+| `~/.taproot/.env` | API keys, location, dashboard URL, startup service, MQTT, notifications, AI config |
 | `.env.example` | All available environment variables |
 
 ## Development

@@ -144,8 +144,10 @@ node src/cli.js setup
 The wizard asks plain-English questions:
 - "Rachio API key:" - paste your key
 - "Do you have an Ambient Weather station?" - answer y or n
-- "n8n webhook URL:" - leave blank if you don't use n8n
-- "Notification email:" - where to send alerts
+- "Address or place:" - fill location, latitude/longitude, and timezone automatically
+- "Who should be able to open the dashboard?" - choose local-only or local-network access
+- "Bookmark URL:" - the stable dashboard URL you want to keep using
+- "Start the dashboard automatically?" - install the startup service during setup on macOS or Linux
 
 It writes your configuration file automatically. No manual file editing needed.
 
@@ -181,13 +183,12 @@ node src/cli.js status
 node src/web.js
 ```
 
-Open `http://your-server-ip:3000` in your browser.
+Open the bookmark URL saved during setup. If you kept the default local-only option, that will usually be `http://127.0.0.1:3000`.
 
-To run it permanently as a background service:
+To keep it available automatically after reboots or logins:
 
 ```bash
-sudo cp deploy/smart-water-web.service /etc/systemd/system/
-sudo systemctl enable --now smart-water-web
+node src/cli.js service install-web
 ```
 
 **Step 7: Install the automatic scheduler**
@@ -235,6 +236,7 @@ The web UI has four pages:
 **Settings** - System configuration
 - Toggle shadow/live mode
 - Edit API keys and environment variables
+- Choose the dashboard host, port, bookmark URL, and startup-service preference
 - All changes saved to ~/.taproot/.env
 
 ## Daily Use
@@ -252,7 +254,7 @@ Once the system is running, you don't need to do anything. It makes decisions au
 ## Troubleshooting
 
 **"No runs in the last 24 hours"**
-- Check that the systemd timer is running: `systemctl status smart-water.timer`
+- Check that the systemd timer is running: `systemctl status taproot.timer`
 - Or if using Docker: `docker logs taproot-scheduler`
 
 **"Rachio API: FAIL"**

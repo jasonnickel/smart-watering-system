@@ -20,6 +20,13 @@ import {
 import { setSystemState } from '../db/state.js';
 import { log } from '../log.js';
 import {
+  normalizeStartupService,
+} from '../startup-service.js';
+import {
+  hostForDashboardAccess,
+  normalizePublicBaseUrl,
+} from '../web-runtime.js';
+import {
   authEnabled, createSession, clearSession,
   verifyPassword, safeNextPath,
   checkLoginRate, recordLoginFailure, clearLoginFailures,
@@ -63,10 +70,13 @@ function readGuidedSettingsFromBody(body) {
   const debugLevel = String(body.get('debug_level') || '1').trim();
   const shadowMode = body.get('shadow_mode') !== 'false';
   const webPort = String(body.get('web_port') || '').trim();
-  const webHost = String(body.get('web_host') || '').trim();
+  const dashboardAccess = String(body.get('dashboard_access') || 'local').trim();
+  const webHostInput = String(body.get('web_host') || '').trim();
   const webhookUrl = String(body.get('webhook_url') || '').trim();
   const notificationEmail = String(body.get('notification_email') || '').trim();
   const locationAddress = String(body.get('location_address') || '').trim();
+  const publicBaseUrl = String(body.get('public_base_url') || '').trim();
+  const startupService = normalizeStartupService(body.get('web_startup_service') || 'manual');
 
   const latNumber = parseFloat(lat);
   const lonNumber = parseFloat(lon);
@@ -103,6 +113,14 @@ function readGuidedSettingsFromBody(body) {
       throw new Error('Web port must be between 1 and 65535');
     }
   }
+  if (!['local', 'network', 'custom'].includes(dashboardAccess)) {
+    throw new Error('Dashboard access must be local, network, or custom');
+  }
+
+  const webHost = hostForDashboardAccess(dashboardAccess, webHostInput);
+  if (dashboardAccess === 'custom' && !webHostInput) {
+    throw new Error('Custom dashboard access requires a host address');
+  }
   if (webHost && /\s/.test(webHost)) {
     throw new Error('Web host cannot contain spaces');
   }
@@ -114,6 +132,9 @@ function readGuidedSettingsFromBody(body) {
   }
   if (notificationEmail && !notificationEmail.includes('@')) {
     throw new Error('Notification email must look like an email address');
+  }
+  if (publicBaseUrl) {
+    normalizePublicBaseUrl(publicBaseUrl);
   }
 
   return {
@@ -131,8 +152,11 @@ function readGuidedSettingsFromBody(body) {
     lat: String(latNumber),
     lon: String(lonNumber),
     locationTimezone: timezone,
+    dashboardAccess,
     webHost,
     webPort,
+    publicBaseUrl,
+    startupService,
     webUiPassword: body.get('web_ui_password') || '',
     disableWebUiPassword: body.get('disable_web_ui_password') === 'on',
   };
@@ -215,6 +239,7 @@ export function handleSmokeTest(_req, res, body, context) {
 }
 
 export async function handleSettingsGuidedSave(_req, res, body, context) {
+  const isSetupFlow = String(_req?.url || '').startsWith('/setup/');
   try {
     const values = readGuidedSettingsFromBody(body);
     const nextContent = applyGuidedSettings(readEnvFile(), values);
@@ -222,10 +247,10 @@ export async function handleSettingsGuidedSave(_req, res, body, context) {
     await writeFile(context.envPath, nextContent, { mode: 0o600 });
     applyRuntimeEnvContent(nextContent, context.syncWebUiAuth);
     log(1, 'Guided settings updated via web UI');
-    return redirect(res, '/settings?msg=settings-saved');
+    return redirect(res, isSetupFlow ? '/setup?msg=setup-saved' : '/settings?msg=settings-saved');
   } catch (err) {
     log(0, `Guided settings save failed: ${err.message}`);
-    return redirect(res, '/settings?msg=settings-error');
+    return redirect(res, isSetupFlow ? '/setup?msg=setup-error' : '/settings?msg=settings-error');
   }
 }
 

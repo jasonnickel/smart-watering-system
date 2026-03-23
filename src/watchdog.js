@@ -8,8 +8,6 @@
 // Alerts are enriched with AI context when AI_API_KEY is configured.
 
 import './env.js';
-import { join } from 'node:path';
-import { homedir } from 'node:os';
 
 import CONFIG from './config.js';
 import { log } from './log.js';
@@ -20,8 +18,9 @@ import { aiNarrationEnabled } from './ai/advisor.js';
 import {
   enrichNotification, missedRunAlert, commandFailureAlert,
 } from './ai/notifications.js';
+import { getDefaultDatabasePath } from './paths.js';
 
-const DB_PATH = process.env.DB_PATH || join(homedir(), '.taproot', 'taproot.db');
+const DB_PATH = getDefaultDatabasePath();
 
 async function sendAlert(alert) {
   let subject = alert.message;

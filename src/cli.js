@@ -11,8 +11,6 @@
 //   taproot cleanup           Remove old data beyond retention period
 
 import './env.js';
-import { join } from 'node:path';
-import { homedir } from 'node:os';
 import { createInterface } from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
 
@@ -40,8 +38,17 @@ import { analyzeTuning } from './core/tuning.js';
 import { runDailyIntegrations } from './core/data-integration.js';
 import { getStatusJSON as getStatusJSONFromDB } from './db/state.js';
 import { connectMQTT, publishState, publishHADiscovery, disconnectMQTT } from './mqtt.js';
+import { getDefaultDatabasePath, PROJECT_ROOT } from './paths.js';
+import {
+  getDefaultStartupService,
+  getWebStartupServiceStatus,
+  installWebStartupService,
+  normalizeStartupService,
+  removeWebStartupService,
+} from './startup-service.js';
 
-const DB_PATH = process.env.DB_PATH || join(homedir(), '.taproot', 'taproot.db');
+const DB_PATH = getDefaultDatabasePath();
+const APP_ROOT = PROJECT_ROOT;
 
 // Track whether a command failure occurred for exit code
 let commandFailed = false;
@@ -85,6 +92,9 @@ async function main() {
     case 'shadow':
       enableShadowMode();
       return;
+    case 'service':
+      await runServiceCommand(flags);
+      return;
     case 'smoke-test':
       await runSmokeTest(flags);
       break;
@@ -99,6 +109,7 @@ async function main() {
       console.log('    doctor         Check system health and connectivity');
       console.log('    go-live        Switch from shadow mode to live mode');
       console.log('    shadow         Force the system back into shadow mode');
+      console.log('    service        Install, remove, or inspect the web startup service');
       console.log('    smoke-test     Run one short live commissioning test on a single zone');
       console.log('');
       console.log('  Daily operations:');
@@ -114,6 +125,51 @@ async function main() {
   // [FIX P1] Exit nonzero when command/verify failed so watchdog catches it
   if (commandFailed) {
     process.exit(2);
+  }
+}
+
+async function runServiceCommand(flags) {
+  const subcommand = flags[0] || 'help';
+  const configuredService = normalizeStartupService(
+    process.env.WEB_STARTUP_SERVICE || getDefaultStartupService()
+  );
+
+  switch (subcommand) {
+    case 'install-web': {
+      const result = installWebStartupService(configuredService, APP_ROOT);
+      console.log(result.detail);
+      if (result.filePath) {
+        console.log(result.filePath);
+      }
+      return;
+    }
+    case 'remove-web': {
+      const result = removeWebStartupService(configuredService);
+      console.log(result.detail);
+      if (result.filePath) {
+        console.log(result.filePath);
+      }
+      return;
+    }
+    case 'status-web': {
+      const status = getWebStartupServiceStatus(configuredService);
+      console.log(`Service: ${configuredService}`);
+      console.log(`Installed: ${status.installed ? 'yes' : 'no'}`);
+      console.log(`Active: ${status.active ? 'yes' : 'no'}`);
+      console.log(`Detail: ${status.detail}`);
+      if (status.filePath) {
+        console.log(`Path: ${status.filePath}`);
+      }
+      return;
+    }
+    default:
+      console.log('');
+      console.log('  Taproot Service Commands');
+      console.log('');
+      console.log('    taproot service install-web   Install or refresh the dashboard startup service');
+      console.log('    taproot service remove-web    Remove the dashboard startup service');
+      console.log('    taproot service status-web    Show dashboard startup service status');
+      console.log('');
   }
 }
 

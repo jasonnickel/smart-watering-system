@@ -1,5 +1,15 @@
 import yaml from 'js-yaml';
 import { deleteEnvValue, readEnvValueFromContent, upsertEnvValue } from '../env.js';
+import {
+  getDefaultStartupService,
+  normalizeStartupService,
+} from '../startup-service.js';
+import {
+  dashboardAccessModeFromHost,
+  normalizePublicBaseUrl,
+  normalizeWebHost,
+  normalizeWebPort,
+} from '../web-runtime.js';
 
 const ENV_HEADER = '# Taproot Configuration';
 const ZONE_HEADER = `# Taproot - Zone Configuration
@@ -68,6 +78,10 @@ function fallbackZoneDocument(fallback = {}) {
 export function buildGuidedSettingsModel(envContent = '') {
   const get = key => readEnvValueFromContent(envContent, key);
   const has = key => Boolean(trimValue(get(key)));
+  const webHost = normalizeWebHost(get('WEB_HOST'));
+  const webPort = String(normalizeWebPort(get('WEB_PORT')));
+  const publicBaseUrl = get('PUBLIC_BASE_URL') || '';
+  const startupService = normalizeStartupService(get('WEB_STARTUP_SERVICE') || getDefaultStartupService());
 
   return {
     notificationEmail: get('NOTIFICATION_EMAIL') || '',
@@ -80,8 +94,11 @@ export function buildGuidedSettingsModel(envContent = '') {
     lat: get('LAT') || '39.73220',
     lon: get('LON') || '-105.21940',
     locationTimezone: get('LOCATION_TIMEZONE') || 'America/Denver',
-    webHost: get('WEB_HOST') || '',
-    webPort: get('WEB_PORT') || '',
+    webHost,
+    webPort,
+    dashboardAccess: dashboardAccessModeFromHost(webHost),
+    publicBaseUrl,
+    startupService,
     rachioConfigured: has('RACHIO_API_KEY'),
     ambientApiConfigured: has('AMBIENT_API_KEY'),
     ambientAppConfigured: has('AMBIENT_APP_KEY'),
@@ -110,9 +127,17 @@ export function applyGuidedSettings(envContent, values) {
   content = setOptionalEnvValue(content, 'N8N_WEBHOOK_URL', values.webhookUrl);
   content = setOptionalEnvValue(content, 'MQTT_BROKER_URL', values.mqttBrokerUrl);
   content = setOptionalEnvValue(content, 'MQTT_TOPIC_PREFIX', values.mqttTopicPrefix, 'taproot');
-  content = setOptionalEnvValue(content, 'WEB_HOST', values.webHost, '127.0.0.1');
-  content = setOptionalEnvValue(content, 'WEB_PORT', values.webPort, '3000');
   content = setOptionalEnvValue(content, 'LOCATION_ADDRESS', values.locationAddress);
+  content = setRequiredEnvValue(content, 'WEB_HOST', normalizeWebHost(values.webHost));
+  content = setRequiredEnvValue(content, 'WEB_PORT', String(normalizeWebPort(values.webPort)));
+  content = setRequiredEnvValue(content, 'WEB_STARTUP_SERVICE', normalizeStartupService(values.startupService));
+
+  const publicBaseUrl = trimValue(values.publicBaseUrl);
+  if (publicBaseUrl) {
+    content = setRequiredEnvValue(content, 'PUBLIC_BASE_URL', normalizePublicBaseUrl(publicBaseUrl));
+  } else {
+    content = deleteEnvValue(content, 'PUBLIC_BASE_URL');
+  }
 
   content = setRequiredEnvValue(content, 'DEBUG_LEVEL', values.debugLevel || '1');
   content = setRequiredEnvValue(content, 'SHADOW_MODE', values.shadowMode ? 'true' : 'false');

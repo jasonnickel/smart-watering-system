@@ -102,8 +102,8 @@ CREATE TABLE IF NOT EXISTS weather_discrepancy (
 **Files to create:**
 - `src/summary.js` - build email content from SQLite data
 - `src/notify.js` - dispatch via webhook or SMTP (shared with 1.3)
-- `deploy/smart-water-summary.service` - systemd oneshot for 6am
-- `deploy/smart-water-summary.timer` - daily at 6am
+- `deploy/taproot-summary.service` - systemd oneshot for 6am
+- `deploy/taproot-summary.timer` - daily at 6am
 
 **Complexity:** Medium (2 hours)
 **Impact:** High - the feature most likely to keep users engaged with the system

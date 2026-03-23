@@ -7,14 +7,18 @@ import CONFIG from './config.js';
 import { localDateStr } from './time.js';
 import { initDB, getStatus, getRunsSince } from './db/state.js';
 import { join } from 'node:path';
-import { homedir } from 'node:os';
 import { existsSync } from 'node:fs';
 import { getEnvFilePath, readShadowMode } from './env.js';
+import {
+  PROJECT_ROOT,
+  TAPROOT_ZONES_PATH,
+  getDefaultDatabasePath,
+} from './paths.js';
 
-const DB_PATH = process.env.DB_PATH || join(homedir(), '.taproot', 'taproot.db');
-const APP_ROOT = join(import.meta.dirname, '..');
+const DB_PATH = getDefaultDatabasePath();
+const APP_ROOT = PROJECT_ROOT;
 const APP_ZONES_PATH = join(APP_ROOT, 'zones.yaml');
-const HOME_ZONES_PATH = join(homedir(), '.taproot', 'zones.yaml');
+const HOME_ZONES_PATH = TAPROOT_ZONES_PATH;
 
 const GREEN = '\x1b[32m';
 const YELLOW = '\x1b[33m';
@@ -130,7 +134,7 @@ function checkZonesConfig() {
     const zoneCount = Object.keys(CONFIG.watering.zoneProfiles).length;
     ok('Zone config', `${zoneCount} zones from zones.yaml`);
   } else if (existsSync(HOME_ZONES_PATH)) {
-    ok('Zone config', 'from ~/.taproot/zones.yaml');
+    ok('Zone config', `from ${HOME_ZONES_PATH}`);
   } else {
     ok('Zone config', 'using defaults from config.js');
   }
