@@ -5,15 +5,14 @@
 // Run Sundays at 7am via systemd timer.
 
 import './env.js';
-import { join } from 'node:path';
-import { homedir } from 'node:os';
 
 import { log } from './log.js';
 import { initDB } from './db/state.js';
 import { sendSummaryEmail } from './notify.js';
 import { buildBriefingContext, generateBriefingNarrative, buildBriefingHTML } from './ai/briefing.js';
+import { getDefaultDatabasePath } from './paths.js';
 
-const DB_PATH = process.env.DB_PATH || join(homedir(), '.taproot', 'taproot.db');
+const DB_PATH = getDefaultDatabasePath();
 
 async function main() {
   initDB(DB_PATH);

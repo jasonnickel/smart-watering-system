@@ -2,19 +2,24 @@
 // Reads zones.yaml and merges into CONFIG at startup.
 
 import { readFileSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
 import yaml from 'js-yaml';
 const parseYAML = yaml.load;
 import { log } from './log.js';
+import {
+  TAPROOT_RATES_PATH,
+  TAPROOT_ZONES_PATH,
+  getProjectRatesPath,
+  getProjectZonesPath,
+} from './paths.js';
 
 const YAML_PATHS = [
-  join(import.meta.dirname, '..', 'zones.yaml'),
-  join(process.env.HOME || '', '.taproot', 'zones.yaml'),
+  getProjectZonesPath(),
+  TAPROOT_ZONES_PATH,
 ];
 
 const RATES_PATHS = [
-  join(import.meta.dirname, '..', 'rates.yaml'),
-  join(process.env.HOME || '', '.taproot', 'rates.yaml'),
+  getProjectRatesPath(),
+  TAPROOT_RATES_PATH,
 ];
 
 /**

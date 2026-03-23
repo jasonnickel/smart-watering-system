@@ -1,6 +1,9 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { readEnvValueFromContent, syncManagedEnvFromContent, upsertEnvValue } from '../../src/env.js';
 import CONFIG, { reloadConfigFromEnv } from '../../src/config.js';
 
@@ -85,6 +88,63 @@ describe('Runtime env reload', () => {
         }
       }
       reloadConfigFromEnv();
+    }
+  });
+});
+
+describe('Legacy Smart Water migration', () => {
+  it('copies legacy env and database into the Taproot home when needed', () => {
+    const tempHome = mkdtempSync(join(tmpdir(), 'taproot-home-'));
+
+    try {
+      const script = `
+        import Database from 'better-sqlite3';
+        import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+        import { homedir } from 'node:os';
+        import { join } from 'node:path';
+
+        const legacyDir = join(homedir(), '.smart-water');
+        const taprootDir = join(homedir(), '.taproot');
+        mkdirSync(legacyDir, { recursive: true });
+        writeFileSync(join(legacyDir, '.env'), 'RACHIO_API_KEY=legacy-key\\nSHADOW_MODE=true\\n');
+
+        const legacyDbPath = join(legacyDir, 'smart-water.db');
+        const db = new Database(legacyDbPath);
+        db.exec('CREATE TABLE runs (id INTEGER PRIMARY KEY, timestamp TEXT, phase TEXT, decision TEXT, reason TEXT, success INTEGER);');
+        db.prepare('INSERT INTO runs (timestamp, phase, decision, reason, success) VALUES (?, ?, ?, ?, ?)').run(
+          '2026-03-23T12:00:00Z',
+          'DECIDE',
+          'SKIP',
+          'legacy history',
+          1
+        );
+        db.close();
+
+        await import('./src/paths.js');
+
+        process.stdout.write(JSON.stringify({
+          envMigrated: existsSync(join(taprootDir, '.env')),
+          envContent: readFileSync(join(taprootDir, '.env'), 'utf8'),
+          dbMigrated: existsSync(join(taprootDir, 'taproot.db')),
+        }));
+      `;
+
+      const result = spawnSync(process.execPath, ['--input-type=module', '-e', script], {
+        cwd: process.cwd(),
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          HOME: tempHome,
+        },
+      });
+
+      assert.equal(result.status, 0, result.stderr);
+      const payload = JSON.parse(result.stdout);
+      assert.equal(payload.envMigrated, true);
+      assert.equal(payload.dbMigrated, true);
+      assert.match(payload.envContent, /RACHIO_API_KEY=legacy-key/);
+    } finally {
+      rmSync(tempHome, { recursive: true, force: true });
     }
   });
 });

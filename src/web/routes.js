@@ -15,7 +15,7 @@ import {
 } from './auth.js';
 import {
   loginPage, dashboardPage, logsPage, zonesPage,
-  settingsPage, chartsPage, briefingPage, satellitePage,
+  settingsPage, setupPage, chartsPage, briefingPage, satellitePage,
 } from './pages.js';
 
 import {
@@ -147,7 +147,7 @@ function buildGetRoutes(context) {
     '/logs': (ctx) => serve(ctx.res, logsPage(ctx.url.searchParams, ctx.csrf)),
     '/zones': (ctx) => serve(ctx.res, zonesPage(ctx.url.searchParams, context.zonesPath, ctx.csrf)),
     '/settings': (ctx) => serve(ctx.res, settingsPage(ctx.url.searchParams, ctx.csrf)),
-    '/setup': (ctx) => redirect(ctx.res, '/settings'),
+    '/setup': (ctx) => serve(ctx.res, setupPage(ctx.url.searchParams, ctx.csrf)),
     '/charts': (ctx) => serve(ctx.res, chartsPage(ctx.csrf)),
     '/briefing': (ctx) => serve(ctx.res, briefingPage(ctx.csrf)),
     '/satellite': (ctx) => serve(ctx.res, satellitePage(ctx.csrf)),

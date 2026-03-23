@@ -38,15 +38,25 @@ fi
 log "Installing Node.js dependencies"
 run npm --prefix "$PROJECT_DIR" install --production
 
+# Retire legacy Smart Water timers if they exist
+log "Disabling legacy Smart Water timers if present"
+for unit in \
+  smart-water.timer \
+  smart-water-watchdog.timer \
+  smart-water-summary.timer
+do
+  run sudo systemctl disable --now "$unit" 2>/dev/null || true
+done
+
 # Copy systemd units
 log "Installing systemd units"
 for unit in \
-  smart-water.service \
-  smart-water.timer \
-  smart-water-watchdog.service \
-  smart-water-watchdog.timer \
-  smart-water-summary.service \
-  smart-water-summary.timer
+  taproot.service \
+  taproot.timer \
+  taproot-watchdog.service \
+  taproot-watchdog.timer \
+  taproot-summary.service \
+  taproot-summary.timer
 do
   run sudo cp "$SCRIPT_DIR/$unit" "$SERVICE_DIR/$unit"
 done
@@ -54,9 +64,9 @@ done
 # Reload and enable timers
 log "Enabling systemd timers"
 run sudo systemctl daemon-reload
-run sudo systemctl enable --now smart-water.timer
-run sudo systemctl enable --now smart-water-watchdog.timer
-run sudo systemctl enable --now smart-water-summary.timer
+run sudo systemctl enable --now taproot.timer
+run sudo systemctl enable --now taproot-watchdog.timer
+run sudo systemctl enable --now taproot-summary.timer
 
 log "Installation complete!"
 log ""
@@ -64,6 +74,6 @@ log "Next steps:"
 log "  1. Edit $ENV_DIR/.env with your API keys"
 log "  2. Test: node $PROJECT_DIR/src/cli.js run --shadow"
 log "  3. Check status: node $PROJECT_DIR/src/cli.js status"
-log "  4. View irrigation logs: journalctl -u smart-water -f"
-log "  5. View summary logs: journalctl -u smart-water-summary -f"
+log "  4. View irrigation logs: journalctl -u taproot -f"
+log "  5. View summary logs: journalctl -u taproot-summary -f"
 log "  6. When ready, remove SHADOW_MODE=true from .env"

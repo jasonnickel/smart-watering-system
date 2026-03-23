@@ -10,7 +10,6 @@
 import './env.js';
 import { createServer } from 'node:http';
 import { join } from 'node:path';
-import { homedir } from 'node:os';
 import { existsSync } from 'node:fs';
 
 import { getEnvFilePath } from './env.js';
@@ -19,15 +18,19 @@ import { initDB } from './db/state.js';
 import { initAuth } from './web/auth.js';
 import { createRequestHandler } from './web/routes.js';
 import { ensureNarrativeTable } from './ai/narratives.js';
+import {
+  TAPROOT_ZONES_PATH,
+  getDefaultDatabasePath,
+} from './paths.js';
 
 const APP_ROOT = join(import.meta.dirname, '..');
 const HOST = process.env.WEB_HOST || '127.0.0.1';
 const PORT = parseInt(process.env.WEB_PORT || '3000', 10);
-const DB_PATH = process.env.DB_PATH || join(homedir(), '.taproot', 'taproot.db');
+const DB_PATH = getDefaultDatabasePath();
 const ENV_PATH = getEnvFilePath();
 const ZONES_PATH = existsSync(join(APP_ROOT, 'zones.yaml'))
   ? join(APP_ROOT, 'zones.yaml')
-  : join(homedir(), '.taproot', 'zones.yaml');
+  : TAPROOT_ZONES_PATH;
 const PUBLIC_DIR = join(import.meta.dirname, 'public');
 
 initDB(DB_PATH);

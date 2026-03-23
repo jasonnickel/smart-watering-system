@@ -9,13 +9,13 @@ describe('Deployment assets', () => {
   it('installs and enables the daily summary units', () => {
     const installScript = readFileSync(join(deployDir, 'install.sh'), 'utf8');
 
-    assert.match(installScript, /smart-water-summary\.service/);
-    assert.match(installScript, /smart-water-summary\.timer/);
-    assert.match(installScript, /systemctl enable --now smart-water-summary\.timer/);
+    assert.match(installScript, /taproot-summary\.service/);
+    assert.match(installScript, /taproot-summary\.timer/);
+    assert.match(installScript, /systemctl enable --now taproot-summary\.timer/);
   });
 
   it('uses the same /home/jason layout as the other systemd units', () => {
-    const summaryService = readFileSync(join(deployDir, 'smart-water-summary.service'), 'utf8');
+    const summaryService = readFileSync(join(deployDir, 'taproot-summary.service'), 'utf8');
 
     assert.match(summaryService, /^User=jason$/m);
     assert.match(summaryService, /^WorkingDirectory=\/home\/jason\/taproot$/m);

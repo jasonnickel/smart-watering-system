@@ -238,6 +238,11 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
   margin: 0 0 10px;
   font-size: var(--text-base);
 }
+.card-subtle {
+  background: var(--neutral-bg);
+  box-shadow: none;
+  margin-top: var(--space-3);
+}
 
 /* === Text helpers === */
 .helper {
@@ -348,6 +353,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 
 /* === Notices === */
 .notice { border-left: 6px solid var(--primary); }
+.notice-neutral { border-left-color: var(--border); }
 .notice-success { border-left-color: var(--success); }
 .notice-warning { border-left-color: var(--warning); }
 .notice-error { border-left-color: var(--danger); }

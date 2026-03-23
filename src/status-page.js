@@ -3,8 +3,6 @@
 
 import './env.js';
 import { writeFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { homedir } from 'node:os';
 import { log } from './log.js';
 import { formatTimestamp, localDateStr, minutesSinceTimestamp } from './time.js';
 import { collectAdvisorInsights, formatAdvisorInsight } from './ai/advisor.js';
@@ -13,9 +11,10 @@ import {
   getRecentDiscrepancies, getFinanceData,
 } from './db/state.js';
 import CONFIG from './config.js';
+import { TAPROOT_STATUS_PAGE_PATH } from './paths.js';
 
 const OUTPUT_PATH = process.env.STATUS_PAGE_PATH
-  || join(homedir(), '.taproot', 'status.html');
+  || TAPROOT_STATUS_PAGE_PATH;
 
 /**
  * Generate and write the status page HTML.

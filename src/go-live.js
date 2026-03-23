@@ -4,11 +4,10 @@
 
 import './env.js';
 import { createInterface } from 'node:readline';
-import { join } from 'node:path';
-import { homedir } from 'node:os';
 import CONFIG from './config.js';
 import { initDB, getRunsSince } from './db/state.js';
 import { getEnvFilePath, readShadowMode, writeEnvValue } from './env.js';
+import { getDefaultDatabasePath } from './paths.js';
 
 const BOLD = '\x1b[1m';
 const GREEN = '\x1b[32m';
@@ -16,7 +15,7 @@ const YELLOW = '\x1b[33m';
 const RED = '\x1b[31m';
 const RESET = '\x1b[0m';
 
-const DB_PATH = process.env.DB_PATH || join(homedir(), '.taproot', 'taproot.db');
+const DB_PATH = getDefaultDatabasePath();
 const ENV_PATH = getEnvFilePath();
 
 const rl = createInterface({ input: process.stdin, output: process.stdout });

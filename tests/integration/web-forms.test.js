@@ -39,6 +39,8 @@ describe('Guided settings editor', () => {
       locationTimezone: 'America/Chicago',
       webHost: '127.0.0.1',
       webPort: '3100',
+      publicBaseUrl: 'http://taproot.local:3100',
+      startupService: 'manual',
       webUiPassword: '',
       disableWebUiPassword: false,
     });
@@ -55,6 +57,8 @@ describe('Guided settings editor', () => {
     assert.equal(model.lon, '-105.2705');
     assert.equal(model.locationTimezone, 'America/Chicago');
     assert.equal(model.webPort, '3100');
+    assert.equal(model.publicBaseUrl, 'http://taproot.local:3100');
+    assert.equal(model.startupService, 'manual');
     assert.equal(model.webUiPasswordConfigured, true);
   });
 
@@ -76,11 +80,43 @@ describe('Guided settings editor', () => {
       locationTimezone: 'America/Denver',
       webHost: '',
       webPort: '',
+      publicBaseUrl: '',
+      startupService: 'manual',
       webUiPassword: '',
       disableWebUiPassword: true,
     });
 
     assert.doesNotMatch(updated, /^WEB_UI_PASSWORD=/m);
+  });
+
+  it('persists dashboard access fields as first-class settings', () => {
+    const updated = applyGuidedSettings('', {
+      rachioApiKey: '',
+      ambientApiKey: '',
+      ambientAppKey: '',
+      ambientMacAddress: '',
+      notificationEmail: '',
+      webhookUrl: '',
+      locationAddress: '',
+      mqttBrokerUrl: '',
+      mqttTopicPrefix: '',
+      debugLevel: '1',
+      shadowMode: true,
+      lat: '39.7322',
+      lon: '-105.2194',
+      locationTimezone: 'America/Denver',
+      webHost: '0.0.0.0',
+      webPort: '4000',
+      publicBaseUrl: 'http://taproot.local:4000',
+      startupService: 'launchd',
+      webUiPassword: '',
+      disableWebUiPassword: false,
+    });
+
+    assert.match(updated, /^WEB_HOST=0\.0\.0\.0$/m);
+    assert.match(updated, /^WEB_PORT=4000$/m);
+    assert.match(updated, /^PUBLIC_BASE_URL=http:\/\/taproot\.local:4000$/m);
+    assert.match(updated, /^WEB_STARTUP_SERVICE=launchd$/m);
   });
 });
 

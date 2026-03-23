@@ -5,6 +5,12 @@ import { existsSync, readFileSync } from 'node:fs';
 import CONFIG from '../config.js';
 import { readEnvFile, readShadowMode } from '../env.js';
 import {
+  getStartupServiceOptions,
+  getStartupServicePlatformLabel,
+  getWebStartupServiceStatus,
+} from '../startup-service.js';
+import { deriveBookmarkUrl } from '../web-runtime.js';
+import {
   buildGuidedSettingsModel,
   buildZoneConfigYaml,
   parseZoneConfig,
@@ -59,6 +65,13 @@ function renderGuidedSettingsForm(model, csrf, options = {}) {
   const ambientHint = model.ambientApiConfigured || model.ambientAppConfigured || model.ambientMacConfigured
     ? 'Ambient Weather credentials are saved.'
     : 'Optional - leave blank to rely on Open-Meteo fallback data.';
+  const startupServiceOptions = getStartupServiceOptions();
+  const startupServiceStatus = getWebStartupServiceStatus(model.startupService);
+  const bookmarkUrl = deriveBookmarkUrl({
+    host: model.webHost,
+    port: model.webPort,
+    publicBaseUrl: model.publicBaseUrl,
+  });
 
   return `
     ${intro}
@@ -109,6 +122,47 @@ function renderGuidedSettingsForm(model, csrf, options = {}) {
               <option value="false"${selectedAttr(model.shadowMode ? 'true' : 'false', 'false')}>Live mode</option>
             </select>
           </div>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Dashboard Access</legend>
+        <p class="helper">Make the bookmark stable by choosing the listening mode, port, and startup behavior here.</p>
+        <div class="form-grid">
+          <div class="form-row">
+            <label for="dashboard-access">Who should reach the dashboard?</label>
+            <select id="dashboard-access" name="dashboard_access">
+              <option value="local"${selectedAttr(model.dashboardAccess, 'local')}>Only this computer</option>
+              <option value="network"${selectedAttr(model.dashboardAccess, 'network')}>This device and my local network</option>
+              <option value="custom"${selectedAttr(model.dashboardAccess, 'custom')}>Custom bind address</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <label for="web-port">Dashboard port</label>
+            <input id="web-port" name="web_port" type="text" inputmode="numeric" value="${escapeHtml(model.webPort)}" placeholder="3000">
+          </div>
+          <div class="form-row">
+            <label for="web-startup-service">Startup service</label>
+            <select id="web-startup-service" name="web_startup_service">
+              ${startupServiceOptions.map(option => `<option value="${escapeHtml(option.value)}"${selectedAttr(model.startupService, option.value)}>${escapeHtml(option.label)}</option>`).join('')}
+            </select>
+            <p class="helper">${escapeHtml(startupServiceStatus.detail)}</p>
+          </div>
+          <div class="form-row">
+            <label for="web-host">Custom bind address</label>
+            <input id="web-host" name="web_host" type="text" value="${escapeHtml(model.webHost)}" placeholder="192.168.1.20">
+            <p class="helper">Used only when dashboard access is set to Custom.</p>
+          </div>
+          <div class="form-row form-row-wide">
+            <label for="public-base-url">Bookmark URL</label>
+            <input id="public-base-url" name="public_base_url" type="url" value="${escapeHtml(model.publicBaseUrl)}" placeholder="http://taproot.local:3000">
+            <p class="helper">Optional but recommended when you want a stable bookmark across devices.</p>
+          </div>
+        </div>
+        <div class="card card-subtle">
+          <h3>Bookmark This URL</h3>
+          <p class="helper"><span class="inline-code">${escapeHtml(bookmarkUrl)}</span></p>
+          <p class="helper">After saving host, port, or startup-service changes, run <span class="inline-code">taproot service install-web</span> to refresh the always-on dashboard on ${escapeHtml(getStartupServicePlatformLabel())}.</p>
         </div>
       </fieldset>
 
@@ -164,14 +218,6 @@ function renderGuidedSettingsForm(model, csrf, options = {}) {
                 <option value="1"${selectedAttr(model.debugLevel, '1')}>1 - info</option>
                 <option value="2"${selectedAttr(model.debugLevel, '2')}>2 - debug</option>
               </select>
-            </div>
-            <div class="form-row">
-              <label for="web-host">Web host</label>
-              <input id="web-host" name="web_host" type="text" value="${escapeHtml(model.webHost)}" placeholder="127.0.0.1">
-            </div>
-            <div class="form-row">
-              <label for="web-port">Web port</label>
-              <input id="web-port" name="web_port" type="text" inputmode="numeric" value="${escapeHtml(model.webPort)}" placeholder="3000">
             </div>
             ${secretField('web-ui-password', 'web_ui_password', 'Web UI password', model.webUiPasswordConfigured, 'Optional')}
           </div>
@@ -640,7 +686,7 @@ export function dashboardPage(query, zonesPath, csrf) {
       <h2>Finish Setup</h2>
       <p class="helper">Add your Rachio API key in Settings to get started.</p>
       <div class="actions">
-        <a class="btn btn-primary" href="/settings">Open Settings</a>
+        <a class="btn btn-primary" href="/setup">Open Guided Setup</a>
       </div>
     </div>` : ''}
 
@@ -778,7 +824,10 @@ export function settingsPage(query, csrf) {
     ${noticeBanner(query)}
     ${setupNeeded ? `<div class="card notice notice-warning" role="status">
       <h2>Finish Setup</h2>
-      <p class="helper">Add your Rachio API key below to get started.</p>
+      <p class="helper">Add your Rachio API key below or use the guided setup flow for the simplest first run.</p>
+      <div class="actions">
+        <a class="btn btn-primary" href="/setup">Open Guided Setup</a>
+      </div>
     </div>` : ''}
     <div class="card">
       <h2>Settings</h2>
@@ -794,6 +843,28 @@ export function settingsPage(query, csrf) {
       <h2>Advanced Editing</h2>
       <p class="helper">Raw env editor for SMTP, status page path, and other advanced settings.</p>
       ${renderAdvancedSettingsEditor(envContent, query, csrf)}
+    </div>
+  `, 'settings', { authEnabled: authEnabled(), csrf });
+}
+
+export function setupPage(query, csrf) {
+  const model = buildGuidedSettingsModel(readEnvFile());
+  return layout('Guided Setup', `
+    ${noticeBanner(query)}
+    <div class="card">
+      <h2>Guided Setup</h2>
+      <p class="helper">This is the simple path: save your controller, location, dashboard access, and startup preference in one place. Shadow mode stays on by default.</p>
+      ${renderGuidedSettingsForm(model, csrf, {
+        action: '/setup/save',
+        submitLabel: 'Complete Guided Setup',
+        intro: `<div class="notice notice-neutral card" role="status">
+          <p class="helper">Use this page for first-time setup or after a rename/migration. Advanced integrations stay tucked away until you need them.</p>
+        </div>`,
+      })}
+    </div>
+    <div class="card">
+      <h2>What Happens Next</h2>
+      <p class="helper">After saving, run <span class="inline-code">taproot doctor</span> to verify connectivity, then run <span class="inline-code">taproot service install-web</span> if you want the dashboard to stay available at the saved bookmark URL.</p>
     </div>
   `, 'settings', { authEnabled: authEnabled(), csrf });
 }
