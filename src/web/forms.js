@@ -1,5 +1,5 @@
 import yaml from 'js-yaml';
-import { deleteEnvValue, readEnvValueFromContent, upsertEnvValue } from './env.js';
+import { deleteEnvValue, readEnvValueFromContent, upsertEnvValue } from '../env.js';
 
 const ENV_HEADER = '# Smart Water System Configuration';
 const ZONE_HEADER = `# Smart Water System - Zone Configuration

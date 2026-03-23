@@ -8,7 +8,7 @@ import {
   buildGuidedSettingsModel,
   buildZoneConfigYaml,
   parseZoneConfig,
-} from '../web-forms.js';
+} from './forms.js';
 import { explainDecision, shortExplanation } from '../explain.js';
 import { chartsPageContent } from '../charts.js';
 import { localDateStr, minutesSinceTimestamp } from '../time.js';
@@ -25,21 +25,6 @@ import {
 
 // -- Shared helpers ----------------------------------------------------------
 
-export function configuredSetupCard() {
-  // Only show the workflow card when setup is still in progress
-  const envContent = readEnvFile();
-  const model = buildGuidedSettingsModel(envContent);
-  if (model.rachioConfigured) return '';
-
-  return `<div class="card">
-    <h2>Choose Your Workflow</h2>
-    <div class="setup-cta">
-      <p class="helper">Prefer terminal and files? Keep using <span class="inline-code">smart-water setup</span>, <span class="inline-code">smart-water doctor</span>, and the raw editors below. Prefer a guided browser flow? Use the Guided Setup tab.</p>
-      <a class="btn btn-secondary" href="/setup">Open Guided Setup</a>
-    </div>
-  </div>`;
-}
-
 function secretField(id, name, label, isSaved, placeholder = '') {
   if (isSaved) {
     return `<div class="form-row">
@@ -47,11 +32,11 @@ function secretField(id, name, label, isSaved, placeholder = '') {
         <div class="secret-field" id="${id}-wrapper">
           <div class="secret-locked">
             <span class="secret-dots">••••••••••••</span>
-            <button type="button" class="btn btn-secondary btn-sm" onclick="this.closest('.secret-field').classList.add('secret-editing');this.closest('.secret-field').querySelector('input').focus();">Edit</button>
+            <button type="button" class="btn btn-secondary btn-sm" data-action="secret-edit">Edit</button>
           </div>
           <div class="secret-input">
             <input id="${id}" name="${name}" type="password" autocomplete="off" placeholder="Enter new value">
-            <button type="button" class="btn btn-secondary btn-sm" onclick="this.closest('.secret-field').classList.remove('secret-editing');this.closest('.secret-field').querySelector('input').value='';">Cancel</button>
+            <button type="button" class="btn btn-secondary btn-sm" data-action="secret-cancel">Cancel</button>
           </div>
         </div>
       </div>`;
@@ -239,11 +224,17 @@ export function loadZoneEditorData(zonesPath) {
   };
 }
 
-function zoneNameMap() {
+function zoneNameMap(moistureData) {
   const names = {};
-  const status = getStatus(localDateStr());
-  for (const zone of status.moisture) {
-    names[zone.zone_number] = zone.zone_name;
+  if (moistureData) {
+    for (const zone of moistureData) {
+      names[zone.zone_number] = zone.zone_name;
+    }
+  } else {
+    const status = getStatus(localDateStr());
+    for (const zone of status.moisture) {
+      names[zone.zone_number] = zone.zone_name;
+    }
   }
   return names;
 }
@@ -369,8 +360,7 @@ function insightLabel(severity) {
   }
 }
 
-function renderAdvisorSection() {
-  const insights = collectAdvisorInsights();
+function renderAdvisorSection(insights) {
   const content = insights.length > 0
     ? `<div class="advisor-list">
         ${insights.map(insight => `<div class="advisor-item">
@@ -386,6 +376,113 @@ function renderAdvisorSection() {
   return `<div class="advisor-content">
     <p class="helper">Advisory-only suggestions. These notes never change the deterministic watering engine on their own.</p>
     ${content}
+  </div>`;
+}
+
+// -- Dashboard sub-renderers -------------------------------------------------
+
+function renderWeatherBadge(ambientCache) {
+  if (!ambientCache) {
+    return badge('Unknown', 'warning');
+  }
+  try {
+    const data = JSON.parse(ambientCache.data_json);
+    const ageMin = minutesSinceTimestamp(ambientCache.fetched_at);
+    if (Number.isFinite(ageMin) && ageMin < CONFIG.degradedMode.ambientStaleThresholdMinutes) {
+      return `${badge('Live', 'success')} ${escapeHtml(`${data.temp}F, ${data.humidity}% RH, wind ${data.windSpeed} mph`)}`;
+    } else if (Number.isFinite(ageMin)) {
+      return `${badge(`Stale (${Math.round(ageMin)}m)`, 'error')}`;
+    }
+    return `${badge('Stale (timestamp unreadable)', 'error')}`;
+  } catch {
+    return badge('Weather cache error', 'error');
+  }
+}
+
+function renderForecastCards(forecastCache) {
+  if (!forecastCache) {
+    return '';
+  }
+  try {
+    const forecast = JSON.parse(forecastCache.data_json);
+    return `<div class="grid grid-2">
+      ${forecast.slice(0, 4).map(day => `<div class="card">
+        <h3>${escapeHtml(day.date?.slice(5) || '?')}</h3>
+        <div class="stat-list">
+          <div class="stat"><span>High</span><span>${escapeHtml(day.tmax?.toFixed(0) || '?')}F</span></div>
+          <div class="stat"><span>Low</span><span>${escapeHtml(day.tmin?.toFixed(0) || '?')}F</span></div>
+          <div class="stat"><span>Rain</span><span>${escapeHtml(day.precipitation?.toFixed(2) || '0.00')}"</span></div>
+        </div>
+      </div>`).join('')}
+    </div>`;
+  } catch {
+    return '';
+  }
+}
+
+function renderMoistureSection(moisture) {
+  if (moisture.length === 0) {
+    return '<p class="helper">No moisture data yet. Run a cycle first.</p>';
+  }
+  return moisture.map(zone => {
+    const pct = zone.total_capacity > 0 ? Math.round((zone.balance_inches / zone.total_capacity) * 100) : 0;
+    return `<div class="card">
+      <h3>Zone ${zone.zone_number} (${escapeHtml(zone.zone_name)})</h3>
+      ${moistureBar(pct)}
+    </div>`;
+  }).join('');
+}
+
+function renderQuickActions(envModel, isShadow, csrf) {
+  if (!envModel.rachioConfigured) {
+    return `<p class="helper">Finish setup before sending commands to Rachio.</p>`;
+  }
+  return `<div class="actions">
+      <form method="POST" action="/action/water" data-confirm="${escapeHtml(isShadow ? 'Start a manual watering run now? Shadow mode is enabled, so nothing will actuate.' : 'Start a live manual watering run now? This will send a real command to Rachio.')}">
+        ${csrfField(csrf)}
+        ${button(isShadow ? 'Run Manual Watering (Shadow)' : 'Water Now (Live)')}
+      </form>
+      <form method="POST" action="/action/shadow-toggle" data-confirm="${escapeHtml(isShadow ? 'Switch to live mode? Future WATER decisions will actuate your Rachio controller.' : 'Switch back to shadow mode? Future decisions will log only and will not actuate Rachio.')}">
+        ${csrfField(csrf)}
+        ${button(isShadow ? 'Go Live' : 'Enable Shadow', isShadow ? 'success' : 'warning')}
+      </form>
+    </div>`;
+}
+
+function renderSmokeTest(zones, smokeZoneOptions, csrf) {
+  return `<details class="card-details">
+      <summary>Commissioning Smoke Test</summary>
+      <div class="card">
+        <p class="helper">Run one short live zone test using the same command path as the controller.</p>
+        <form method="POST" action="/action/smoke-test" data-confirm="Start a live smoke test now? This will send a real command to Rachio.">
+          ${csrfField(csrf)}
+          <div class="form-grid">
+            <div class="form-row">
+              <label for="smoke-zone">Zone</label>
+              <select id="smoke-zone" name="zone">${smokeZoneOptions}</select>
+            </div>
+            <div class="form-row">
+              <label for="smoke-minutes">Duration</label>
+              <select id="smoke-minutes" name="minutes">
+                <option value="1">1 minute</option>
+                <option value="2">2 minutes</option>
+                <option value="3">3 minutes</option>
+              </select>
+            </div>
+          </div>
+          <div class="actions">
+            ${button('Run Smoke Test', 'warning')}
+          </div>
+        </form>
+      </div>
+    </details>`;
+}
+
+function renderNextSteps() {
+  return `<div class="stat-list">
+    <div class="stat"><span>1.</span><span>Review zones in the Zones tab or keep using raw YAML.</span></div>
+    <div class="stat"><span>2.</span><span>Run <span class="inline-code">smart-water doctor</span> to verify connectivity.</span></div>
+    <div class="stat"><span>3.</span><span>Stay in shadow mode until you trust the decisions.</span></div>
   </div>`;
 }
 
@@ -423,53 +520,9 @@ export function dashboardPage(query, zonesPath, csrf) {
   const envModel = buildGuidedSettingsModel(readEnvFile());
   const isShadow = readShadowMode();
 
-  const ambientCache = getCachedWeather('ambient');
-  let weatherHtml = badge('Unknown', 'warning');
-  if (ambientCache) {
-    try {
-      const data = JSON.parse(ambientCache.data_json);
-      const ageMin = minutesSinceTimestamp(ambientCache.fetched_at);
-      if (Number.isFinite(ageMin) && ageMin < CONFIG.degradedMode.ambientStaleThresholdMinutes) {
-        weatherHtml = `${badge('Live', 'success')} ${escapeHtml(`${data.temp}F, ${data.humidity}% RH, wind ${data.windSpeed} mph`)}`;
-      } else if (Number.isFinite(ageMin)) {
-        weatherHtml = `${badge(`Stale (${Math.round(ageMin)}m)`, 'error')}`;
-      } else {
-        weatherHtml = `${badge('Stale (timestamp unreadable)', 'error')}`;
-      }
-    } catch {
-      weatherHtml = badge('Weather cache error', 'error');
-    }
-  }
-
-  const forecastCache = getCachedWeather('openmeteo_forecast');
-  let forecastHtml = '';
-  if (forecastCache) {
-    try {
-      const forecast = JSON.parse(forecastCache.data_json);
-      forecastHtml = `<div class="grid grid-2">
-        ${forecast.slice(0, 4).map(day => `<div class="card">
-          <h3>${escapeHtml(day.date?.slice(5) || '?')}</h3>
-          <div class="stat-list">
-            <div class="stat"><span>High</span><span>${escapeHtml(day.tmax?.toFixed(0) || '?')}F</span></div>
-            <div class="stat"><span>Low</span><span>${escapeHtml(day.tmin?.toFixed(0) || '?')}F</span></div>
-            <div class="stat"><span>Rain</span><span>${escapeHtml(day.precipitation?.toFixed(2) || '0.00')}"</span></div>
-          </div>
-        </div>`).join('')}
-      </div>`;
-    } catch {
-      forecastHtml = '';
-    }
-  }
-
-  const moistureHtml = status.moisture.length > 0
-    ? status.moisture.map(zone => {
-        const pct = zone.total_capacity > 0 ? Math.round((zone.balance_inches / zone.total_capacity) * 100) : 0;
-        return `<div class="card">
-          <h3>Zone ${zone.zone_number} (${escapeHtml(zone.zone_name)})</h3>
-          ${moistureBar(pct)}
-        </div>`;
-      }).join('')
-    : '<p class="helper">No moisture data yet. Run a cycle first.</p>';
+  const weatherHtml = renderWeatherBadge(getCachedWeather('ambient'));
+  const forecastHtml = renderForecastCards(getCachedWeather('openmeteo_forecast'));
+  const moistureHtml = renderMoistureSection(status.moisture);
 
   let lastDecision = 'No runs yet';
   let lastExplanation = '';
@@ -478,29 +531,21 @@ export function dashboardPage(query, zonesPath, csrf) {
     lastExplanation = explainDecision(status.lastRun);
   }
 
+  const names = zoneNameMap(status.moisture);
   const zoneData = loadZoneEditorData(zonesPath);
   const smokeZoneOptions = zoneData.zones.map(zone => {
-    const name = zoneNameMap()[zone.zoneNumber] || `Zone ${zone.zoneNumber}`;
+    const name = names[zone.zoneNumber] || `Zone ${zone.zoneNumber}`;
     return `<option value="${zone.zoneNumber}">Zone ${zone.zoneNumber} - ${escapeHtml(name)}</option>`;
   }).join('');
 
-  const actionsHtml = envModel.rachioConfigured ? `<div class="actions">
-      <form method="POST" action="/action/water" onsubmit="return confirm('${escapeHtml(isShadow ? 'Start a manual watering run now? Shadow mode is enabled, so nothing will actuate.' : 'Start a live manual watering run now? This will send a real command to Rachio.')}')">
-        ${csrfField(csrf)}
-        ${button(isShadow ? 'Run Manual Watering (Shadow)' : 'Water Now (Live)')}
-      </form>
-      <form method="POST" action="/action/shadow-toggle" onsubmit="return confirm('${escapeHtml(isShadow ? 'Switch to live mode? Future WATER decisions will actuate your Rachio controller.' : 'Switch back to shadow mode? Future decisions will log only and will not actuate Rachio.')}')">
-        ${csrfField(csrf)}
-        ${button(isShadow ? 'Go Live' : 'Enable Shadow', isShadow ? 'success' : 'warning')}
-      </form>
-    </div>`
-    : `<p class="helper">Finish setup before sending commands to Rachio.</p>`;
+  const actionsHtml = renderQuickActions(envModel, isShadow, csrf);
 
   // Setup is complete when Rachio key is configured
   const setupComplete = envModel.rachioConfigured;
   const hasMoistureData = status.moisture.length > 0;
 
-  const hasActiveInsights = collectAdvisorInsights().some(i => i.severity === 'critical' || i.severity === 'warning');
+  const insights = collectAdvisorInsights();
+  const hasActiveInsights = insights.some(i => i.severity === 'critical' || i.severity === 'warning');
 
   return layout('Dashboard', `
     ${noticeBanner(query)}
@@ -548,7 +593,7 @@ export function dashboardPage(query, zonesPath, csrf) {
 
     <details class="card-details"${hasActiveInsights ? ' open' : ''}>
       <summary>Advisor Insights${hasActiveInsights ? ` - ${badge('Attention', 'warning')}` : ''}</summary>
-      ${renderAdvisorSection()}
+      ${renderAdvisorSection(insights)}
     </details>
 
     ${aiNarrationEnabled() ? `<div class="card">
@@ -564,32 +609,7 @@ export function dashboardPage(query, zonesPath, csrf) {
       <div id="chat-output" class="chat-output"></div>
     </div>` : ''}
 
-    ${envModel.rachioConfigured && !isShadow ? `<details class="card-details">
-      <summary>Commissioning Smoke Test</summary>
-      <div class="card">
-        <p class="helper">Run one short live zone test using the same command path as the controller.</p>
-        <form method="POST" action="/action/smoke-test" onsubmit="return confirm('Start a live smoke test now? This will send a real command to Rachio.')">
-          ${csrfField(csrf)}
-          <div class="form-grid">
-            <div class="form-row">
-              <label for="smoke-zone">Zone</label>
-              <select id="smoke-zone" name="zone">${smokeZoneOptions}</select>
-            </div>
-            <div class="form-row">
-              <label for="smoke-minutes">Duration</label>
-              <select id="smoke-minutes" name="minutes">
-                <option value="1">1 minute</option>
-                <option value="2">2 minutes</option>
-                <option value="3">3 minutes</option>
-              </select>
-            </div>
-          </div>
-          <div class="actions">
-            ${button('Run Smoke Test', 'warning')}
-          </div>
-        </form>
-      </div>
-    </details>` : ''}
+    ${envModel.rachioConfigured && !isShadow ? renderSmokeTest(zoneData.zones, smokeZoneOptions, csrf) : ''}
 
     <div class="card">
       <h2>More</h2>
@@ -615,10 +635,10 @@ export function logsPage(query, csrf) {
     ? runs.map(run => {
         const reasonText = escapeHtml(run.phase === 'DECIDE' ? shortExplanation(run) : (run.reason || ''));
         const narrativeBtn = aiEnabled && run.phase === 'DECIDE' && run.id
-          ? ` <button class="btn-inline" data-narrative-run="${run.id}">Explain</button>`
+          ? ` <button class="btn-inline" data-narrative-run="${escapeHtml(run.id)}">Explain</button>`
           : '';
         const narrativeContainer = aiEnabled && run.phase === 'DECIDE' && run.id
-          ? `<tr class="narrative-row"><td colspan="5"><div id="narrative-${run.id}" class="narrative-container" style="display:none"></div></td></tr>`
+          ? `<tr class="narrative-row"><td colspan="5"><div id="narrative-${escapeHtml(run.id)}" class="narrative-container" style="display:none"></div></td></tr>`
           : '';
         return `<tr>
         <td>${escapeHtml(run.timestamp?.slice(0, 16).replace('T', ' ') || '?')}</td>
@@ -678,11 +698,7 @@ export function settingsPage(query, csrf) {
     </div>
     ${setupNeeded ? `<div class="card">
       <h2>Next Steps</h2>
-      <div class="stat-list">
-        <div class="stat"><span>1.</span><span>Review zones in the Zones tab or keep using raw YAML.</span></div>
-        <div class="stat"><span>2.</span><span>Run <span class="inline-code">smart-water doctor</span> to verify connectivity.</span></div>
-        <div class="stat"><span>3.</span><span>Stay in shadow mode until you trust the decisions.</span></div>
-      </div>
+      ${renderNextSteps()}
     </div>` : ''}
     <div class="card">
       <h2>Advanced Editing</h2>
@@ -690,32 +706,6 @@ export function settingsPage(query, csrf) {
       ${renderAdvancedSettingsEditor(envContent, query, csrf)}
     </div>
   `, 'settings', { authEnabled: authEnabled(), csrf });
-}
-
-export function setupPage(query, csrf) {
-  const envContent = readEnvFile();
-  const model = buildGuidedSettingsModel(envContent);
-
-  return layout('Guided Setup', `
-    ${noticeBanner(query)}
-    <div class="card">
-      <h2>Guided Setup</h2>
-      <p class="helper">This page is optional. If you prefer the developer workflow, you can still use <span class="inline-code">smart-water setup</span>, edit <span class="inline-code">~/.smart-water/.env</span>, and manage <span class="inline-code">zones.yaml</span> directly.</p>
-      ${renderGuidedSettingsForm(model, csrf, {
-        action: '/setup/save',
-        submitLabel: 'Save Guided Setup',
-        showDisablePassword: model.webUiPasswordConfigured,
-      })}
-    </div>
-    <div class="card">
-      <h2>Next Steps</h2>
-      <div class="stat-list">
-        <div class="stat"><span>1.</span><span>Review zones in the Zones tab or keep using raw YAML.</span></div>
-        <div class="stat"><span>2.</span><span>Run <span class="inline-code">smart-water doctor</span> to verify connectivity.</span></div>
-        <div class="stat"><span>3.</span><span>Stay in shadow mode until you trust the decisions.</span></div>
-      </div>
-    </div>
-  `, 'setup', { authEnabled: authEnabled(), csrf });
 }
 
 export function chartsPage(csrf) {

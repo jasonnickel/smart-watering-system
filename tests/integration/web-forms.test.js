@@ -7,7 +7,7 @@ import {
   normalizeSoilProfiles,
   normalizeZones,
   parseZoneConfig,
-} from '../../src/web-forms.js';
+} from '../../src/web/forms.js';
 
 describe('Guided settings editor', () => {
   it('preserves existing secrets when the guided form leaves them blank', () => {
