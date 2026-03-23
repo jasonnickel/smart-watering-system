@@ -1,4 +1,4 @@
-import { config as loadEnv } from 'dotenv';
+import { config as loadEnv, parse as parseEnv } from 'dotenv';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { homedir } from 'node:os';
@@ -6,6 +6,29 @@ import { homedir } from 'node:os';
 export const PROJECT_ENV_PATH = join(import.meta.dirname, '..', '.env');
 export const HOME_ENV_PATH = join(homedir(), '.taproot', '.env');
 export const ACTIVE_ENV_PATH = existsSync(PROJECT_ENV_PATH) ? PROJECT_ENV_PATH : HOME_ENV_PATH;
+export const MANAGED_ENV_KEYS = [
+  'RACHIO_API_KEY',
+  'AMBIENT_API_KEY',
+  'AMBIENT_APP_KEY',
+  'AMBIENT_MAC_ADDRESS',
+  'NOTIFICATION_EMAIL',
+  'SMTP_HOST',
+  'SMTP_PORT',
+  'SMTP_USER',
+  'SMTP_PASS',
+  'N8N_WEBHOOK_URL',
+  'MQTT_BROKER_URL',
+  'MQTT_TOPIC_PREFIX',
+  'DEBUG_LEVEL',
+  'SHADOW_MODE',
+  'LAT',
+  'LON',
+  'LOCATION_TIMEZONE',
+  'LOCATION_ADDRESS',
+  'WEB_HOST',
+  'WEB_PORT',
+  'WEB_UI_PASSWORD',
+];
 
 loadEnv({ path: ACTIVE_ENV_PATH });
 
@@ -32,6 +55,17 @@ export function readEnvValueFromContent(content, key) {
 
 export function readEnvValue(key) {
   return readEnvValueFromContent(readEnvFile(), key);
+}
+
+export function syncManagedEnvFromContent(content) {
+  const parsed = parseEnv(content || '');
+  for (const key of MANAGED_ENV_KEYS) {
+    if (Object.hasOwn(parsed, key)) {
+      process.env[key] = parsed[key];
+    } else {
+      delete process.env[key];
+    }
+  }
 }
 
 export function upsertEnvValue(content, key, value) {

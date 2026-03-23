@@ -15,6 +15,49 @@ function envNumber(name, fallback) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+function currentEnvBackedConfig() {
+  return {
+    api: {
+      ambientWeather: {
+        apiKey: process.env.AMBIENT_API_KEY,
+        appKey: process.env.AMBIENT_APP_KEY,
+        macAddress: process.env.AMBIENT_MAC_ADDRESS,
+      },
+      rachio: {
+        apiKey: process.env.RACHIO_API_KEY,
+      },
+    },
+
+    system: {
+      shadowMode: process.env.SHADOW_MODE === 'true',
+      debugLevel: parseInt(process.env.DEBUG_LEVEL || '1', 10),
+    },
+
+    location: {
+      lat: envNumber('LAT', 39.73220),
+      lon: envNumber('LON', -105.21940),
+      timezone: process.env.LOCATION_TIMEZONE || 'America/Denver',
+      address: process.env.LOCATION_ADDRESS || '',
+    },
+
+    notifications: {
+      email: process.env.NOTIFICATION_EMAIL || '',
+      webhookUrl: process.env.N8N_WEBHOOK_URL || '',
+      smtp: {
+        host: process.env.SMTP_HOST || '',
+        port: parseInt(process.env.SMTP_PORT || '587', 10),
+        user: process.env.SMTP_USER || '',
+        pass: process.env.SMTP_PASS || '',
+      },
+    },
+
+    mqtt: {
+      brokerUrl: process.env.MQTT_BROKER_URL || '',
+      topicPrefix: process.env.MQTT_TOPIC_PREFIX || 'taproot',
+    },
+  };
+}
+
 const CONFIG = {
   api: {
     ambientWeather: {
@@ -41,6 +84,7 @@ const CONFIG = {
     lat: envNumber('LAT', 39.73220),
     lon: envNumber('LON', -105.21940),
     timezone: process.env.LOCATION_TIMEZONE || 'America/Denver',
+    address: process.env.LOCATION_ADDRESS || '',
   },
 
   notifications: {
@@ -232,3 +276,30 @@ if (yamlConfig) {
 }
 
 export default CONFIG;
+
+export function reloadConfigFromEnv() {
+  const next = currentEnvBackedConfig();
+
+  CONFIG.api.ambientWeather.apiKey = next.api.ambientWeather.apiKey;
+  CONFIG.api.ambientWeather.appKey = next.api.ambientWeather.appKey;
+  CONFIG.api.ambientWeather.macAddress = next.api.ambientWeather.macAddress;
+  CONFIG.api.rachio.apiKey = next.api.rachio.apiKey;
+
+  CONFIG.system.shadowMode = next.system.shadowMode;
+  CONFIG.system.debugLevel = next.system.debugLevel;
+
+  CONFIG.location.lat = next.location.lat;
+  CONFIG.location.lon = next.location.lon;
+  CONFIG.location.timezone = next.location.timezone;
+  CONFIG.location.address = next.location.address;
+
+  CONFIG.notifications.email = next.notifications.email;
+  CONFIG.notifications.webhookUrl = next.notifications.webhookUrl;
+  CONFIG.notifications.smtp.host = next.notifications.smtp.host;
+  CONFIG.notifications.smtp.port = next.notifications.smtp.port;
+  CONFIG.notifications.smtp.user = next.notifications.smtp.user;
+  CONFIG.notifications.smtp.pass = next.notifications.smtp.pass;
+
+  CONFIG.mqtt.brokerUrl = next.mqtt.brokerUrl;
+  CONFIG.mqtt.topicPrefix = next.mqtt.topicPrefix;
+}

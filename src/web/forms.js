@@ -76,6 +76,7 @@ export function buildGuidedSettingsModel(envContent = '') {
     mqttTopicPrefix: get('MQTT_TOPIC_PREFIX') || '',
     debugLevel: get('DEBUG_LEVEL') || '1',
     shadowMode: (get('SHADOW_MODE') || 'true') === 'true',
+    locationAddress: get('LOCATION_ADDRESS') || '',
     lat: get('LAT') || '39.73220',
     lon: get('LON') || '-105.21940',
     locationTimezone: get('LOCATION_TIMEZONE') || 'America/Denver',
@@ -111,6 +112,7 @@ export function applyGuidedSettings(envContent, values) {
   content = setOptionalEnvValue(content, 'MQTT_TOPIC_PREFIX', values.mqttTopicPrefix, 'taproot');
   content = setOptionalEnvValue(content, 'WEB_HOST', values.webHost, '127.0.0.1');
   content = setOptionalEnvValue(content, 'WEB_PORT', values.webPort, '3000');
+  content = setOptionalEnvValue(content, 'LOCATION_ADDRESS', values.locationAddress);
 
   content = setRequiredEnvValue(content, 'DEBUG_LEVEL', values.debugLevel || '1');
   content = setRequiredEnvValue(content, 'SHADOW_MODE', values.shadowMode ? 'true' : 'false');

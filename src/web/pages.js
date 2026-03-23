@@ -14,6 +14,7 @@ import { chartsPageContent } from '../charts.js';
 import { localDateStr, minutesSinceTimestamp } from '../time.js';
 import {
   getStatus, getRunsSince, getFinanceData, getCachedWeather,
+  getSystemState,
 } from '../db/state.js';
 import { collectAdvisorInsights, aiNarrationEnabled } from '../ai/advisor.js';
 import { ndviEnabled } from '../api/ndvi.js';
@@ -72,8 +73,17 @@ function renderGuidedSettingsForm(model, csrf, options = {}) {
 
       <fieldset>
         <legend>Location</legend>
-        <p class="helper">Used for Open-Meteo forecasts and local schedule timing.</p>
+        <p class="helper">Used for forecasts, timezone-aware scheduling, soil lookup, and satellite views.</p>
         <div class="form-grid">
+          <div class="form-row form-row-wide">
+            <label for="location-address">Address or place</label>
+            <input id="location-address" name="location_address" type="text" value="${escapeHtml(model.locationAddress)}" placeholder="123 Main St, Golden, CO 80401">
+            <p class="helper">Enter a street address, neighborhood, or ZIP code, then fill the fields below automatically.</p>
+            <div class="location-lookup-actions">
+              <button id="location-lookup" class="btn btn-secondary" type="button">Look Up Address</button>
+              <span id="location-lookup-status" class="small"></span>
+            </div>
+          </div>
           <div class="form-row">
             <label for="lat">Latitude</label>
             <input id="lat" name="lat" type="text" inputmode="decimal" value="${escapeHtml(model.lat)}">
@@ -252,7 +262,7 @@ function renderGuidedZonesForm(zoneData, csrf) {
         <div class="form-row">
           <label for="type-${zone.zoneNumber}">Irrigation type</label>
           <select id="type-${zone.zoneNumber}" name="type">
-            <option value="lawn"${selectedAttr(zone.type, 'lawn')}>Lawn spray</option>
+            <option value="lawn"${selectedAttr(zone.type, 'lawn')}>Sprinkler</option>
             <option value="drip"${selectedAttr(zone.type, 'drip')}>Drip</option>
           </select>
         </div>
@@ -489,6 +499,34 @@ function renderQuickActions(envModel, isShadow, csrf) {
     </div>`;
 }
 
+const NEXT_STEP_STATE_KEY = 'settings_next_steps';
+const NEXT_STEP_ITEMS = [
+  {
+    id: 'review_zones',
+    html: 'Review zones in the Zones tab or keep using the raw YAML editor.',
+  },
+  {
+    id: 'run_doctor',
+    html: 'Run <span class="inline-code">taproot doctor</span> to verify connectivity.',
+  },
+  {
+    id: 'shadow_reviewed',
+    html: 'Use shadow mode until you trust the decisions enough to go live.',
+  },
+];
+
+function loadNextStepProgress() {
+  const stored = getSystemState(NEXT_STEP_STATE_KEY);
+  if (!stored) return {};
+
+  try {
+    const parsed = JSON.parse(stored);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
 function renderSmokeTest(zones, smokeZoneOptions, csrf) {
   return `<details class="card-details">
       <summary>Commissioning Smoke Test</summary>
@@ -518,12 +556,20 @@ function renderSmokeTest(zones, smokeZoneOptions, csrf) {
     </details>`;
 }
 
-function renderNextSteps() {
-  return `<div class="stat-list">
-    <div class="stat"><span>1.</span><span>Review zones in the Zones tab or keep using raw YAML.</span></div>
-    <div class="stat"><span>2.</span><span>Run <span class="inline-code">taproot doctor</span> to verify connectivity.</span></div>
-    <div class="stat"><span>3.</span><span>Stay in shadow mode until you trust the decisions.</span></div>
-  </div>`;
+function renderNextSteps(csrf, progress = {}) {
+  return `<form method="POST" action="/settings/next-steps">
+    ${csrfField(csrf)}
+    <div class="next-steps-list">
+      ${NEXT_STEP_ITEMS.map((item, index) => `<label class="next-step-row">
+        <input type="checkbox" name="${item.id}"${progress[item.id] ? ' checked' : ''}>
+        <span class="next-step-number">${index + 1}.</span>
+        <span class="next-step-text">${item.html}</span>
+      </label>`).join('')}
+    </div>
+    <div class="actions">
+      ${button('Save Checklist', 'secondary')}
+    </div>
+  </form>`;
 }
 
 // -- Page renderers ----------------------------------------------------------
@@ -601,10 +647,10 @@ export function dashboardPage(query, zonesPath, csrf) {
     <div class="grid grid-2">
       <div class="card">
         <h2>System Status</h2>
-        <div class="stat-list">
-          <div class="stat"><span>Mode</span><span>${isShadow ? badge('Shadow', 'warning') : badge('Live', 'success')}</span></div>
-          <div class="stat"><span>Weather</span><span>${weatherHtml}</span></div>
-          <div class="stat"><span>Last decision</span><span>${lastDecision}</span></div>
+        <div class="stat-list stat-list-left">
+          <div class="stat"><span class="stat-label">Mode</span><span class="stat-value">${isShadow ? badge('Shadow', 'warning') : badge('Live', 'success')}</span></div>
+          <div class="stat"><span class="stat-label">Weather</span><span class="stat-value">${weatherHtml}</span></div>
+          <div class="stat"><span class="stat-label">Last decision</span><span class="stat-value">${lastDecision}</span></div>
         </div>
         ${lastExplanation ? `<p class="card-footnote">${escapeHtml(lastExplanation)}</p>` : ''}
       </div>
@@ -620,6 +666,7 @@ export function dashboardPage(query, zonesPath, csrf) {
 
     ${hasMoistureData ? `<div class="card">
       <h2>Soil Moisture</h2>
+      <p class="helper">These percentages are modeled estimates, not sensor readings. Each zone compares its estimated water balance against configured soil-water capacity using logged watering, rainfall, and evapotranspiration.</p>
       <div class="grid grid-2">${moistureHtml}</div>
     </div>` : ''}
 
@@ -725,6 +772,7 @@ export function settingsPage(query, csrf) {
   const envContent = readEnvFile();
   const model = buildGuidedSettingsModel(envContent);
   const setupNeeded = !model.rachioConfigured;
+  const nextStepProgress = loadNextStepProgress();
 
   return layout('Settings', `
     ${noticeBanner(query)}
@@ -737,10 +785,11 @@ export function settingsPage(query, csrf) {
       <p class="helper">Leave secret fields blank to keep the existing saved value.</p>
       ${renderGuidedSettingsForm(model, csrf)}
     </div>
-    ${setupNeeded ? `<div class="card">
+    <div class="card">
       <h2>Next Steps</h2>
-      ${renderNextSteps()}
-    </div>` : ''}
+      <p class="helper">Use this commissioning checklist to track what you have already addressed. Progress stays saved on this controller.</p>
+      ${renderNextSteps(csrf, nextStepProgress)}
+    </div>
     <div class="card">
       <h2>Advanced Editing</h2>
       <p class="helper">Raw env editor for SMTP, status page path, and other advanced settings.</p>

@@ -6,6 +6,7 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import CONFIG from '../../src/config.js';
 import { closeDB, getDB, initDB } from '../../src/db/state.js';
 import { initAuth } from '../../src/web/auth.js';
 import { createRequestHandler } from '../../src/web/routes.js';
@@ -82,6 +83,50 @@ describe('Web routes', () => {
     assert.equal(response.status, 401);
     assert.match(response.headers.get('content-type') || '', /application\/json/);
     assert.deepEqual(await response.json(), { error: 'authentication required' });
+  });
+
+  it('supports chart history requests up to 90 days', async () => {
+    const baseUrl = await startServer();
+    const response = await fetch(`${baseUrl}/api/charts?days=90`);
+
+    assert.equal(response.status, 200);
+    const payload = await response.json();
+    assert.ok(Array.isArray(payload.dailyUsage));
+    assert.ok(Array.isArray(payload.decisions));
+    assert.ok(Array.isArray(payload.precipAudits));
+  });
+
+  it('looks up coordinates and timezone from an address query', async () => {
+    globalThis.fetch = async (url) => {
+      const rawUrl = String(url);
+      if (rawUrl.startsWith('https://nominatim.openstreetmap.org/search?')) {
+        return new Response(JSON.stringify([{
+          display_name: '123 Main St, Golden, Jefferson County, Colorado, United States',
+          lat: '39.75543',
+          lon: '-105.22110',
+        }]), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (rawUrl.startsWith('https://api.open-meteo.com/v1/forecast?')) {
+        return new Response(JSON.stringify({ timezone: 'America/Denver', daily: { temperature_2m_max: [72] } }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      throw new Error(`Unexpected fetch: ${rawUrl}`);
+    };
+
+    const baseUrl = await startServer();
+    const response = await ORIGINAL_FETCH(`${baseUrl}/api/location-search?q=123%20Main%20St%20Golden%20CO`);
+
+    assert.equal(response.status, 200);
+    const payload = await response.json();
+    assert.equal(payload.location.displayName, '123 Main St, Golden, Jefferson County, Colorado, United States');
+    assert.equal(payload.location.latitude, 39.75543);
+    assert.equal(payload.location.longitude, -105.2211);
+    assert.equal(payload.location.timezone, 'America/Denver');
   });
 
   it('falls back to a safe history window when hours is invalid', async () => {
@@ -269,5 +314,70 @@ describe('Web routes', () => {
     assert.equal(payload.analysis.strongestMonth.monthLabel, 'Mar 2026');
     assert.match(payload.analysis.readingGuide[0], /fixed alignment image/i);
     assert.match(payload.analysis.limitations[0], /10 meters wide/i);
+  });
+
+  it('persists the next-steps checklist selections', async () => {
+    const baseUrl = await startServer();
+
+    const saveResponse = await fetch(`${baseUrl}/settings/next-steps`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        review_zones: 'on',
+        run_doctor: 'on',
+      }),
+      redirect: 'manual',
+    });
+
+    assert.equal(saveResponse.status, 302);
+    assert.match(saveResponse.headers.get('location') || '', /next-steps-saved/);
+
+    const settingsResponse = await ORIGINAL_FETCH(`${baseUrl}/settings`);
+    const html = await settingsResponse.text();
+
+    assert.match(html, /name="review_zones" checked/);
+    assert.match(html, /name="run_doctor" checked/);
+    assert.doesNotMatch(html, /name="shadow_reviewed" checked/);
+  });
+
+  it('applies guided settings to the live config after save', async () => {
+    const original = {
+      key: CONFIG.api.rachio.apiKey,
+      lat: CONFIG.location.lat,
+      lon: CONFIG.location.lon,
+      timezone: CONFIG.location.timezone,
+      address: CONFIG.location.address,
+    };
+
+    try {
+      const baseUrl = await startServer();
+      const response = await fetch(`${baseUrl}/settings/guided-save`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          rachio_api_key: 'fresh-key',
+          location_address: '123 Main St, Golden, CO 80401',
+          lat: '40.015',
+          lon: '-105.2705',
+          location_timezone: 'America/Chicago',
+          debug_level: '1',
+          shadow_mode: 'true',
+        }),
+        redirect: 'manual',
+      });
+
+      assert.equal(response.status, 302);
+      assert.equal(CONFIG.api.rachio.apiKey, 'fresh-key');
+      assert.equal(CONFIG.location.address, '123 Main St, Golden, CO 80401');
+      assert.equal(CONFIG.location.lat, 40.015);
+      assert.equal(CONFIG.location.lon, -105.2705);
+      assert.equal(CONFIG.location.timezone, 'America/Chicago');
+    } finally {
+      CONFIG.api.rachio.apiKey = original.key;
+      CONFIG.location.address = original.address;
+      CONFIG.location.lat = original.lat;
+      CONFIG.location.lon = original.lon;
+      CONFIG.location.timezone = original.timezone;
+    }
   });
 });

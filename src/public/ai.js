@@ -32,6 +32,7 @@
     initChat();
     initNarratives();
     initBriefing();
+    initLocationLookup();
   });
 
   // -- Ask Your Yard chat ---------------------------------------------------
@@ -189,6 +190,67 @@
         .finally(function () {
           btn.disabled = false;
           btn.textContent = 'Generate Briefing Now';
+        });
+    });
+  }
+
+  function initLocationLookup() {
+    var button = document.getElementById('location-lookup');
+    if (!button) return;
+
+    var address = document.getElementById('location-address');
+    var lat = document.getElementById('lat');
+    var lon = document.getElementById('lon');
+    var timezone = document.getElementById('location-timezone');
+    var status = document.getElementById('location-lookup-status');
+
+    button.addEventListener('click', function () {
+      var query = address && address.value ? address.value.trim() : '';
+      if (query.length < 3) {
+        if (status) {
+          status.textContent = 'Enter a fuller address or ZIP code first.';
+          status.style.color = 'var(--danger)';
+        }
+        return;
+      }
+
+      button.disabled = true;
+      button.textContent = 'Looking Up...';
+      if (status) {
+        status.textContent = 'Searching for the best location match...';
+        status.style.color = '';
+      }
+
+      fetch('/api/location-search?q=' + encodeURIComponent(query))
+        .then(function (response) {
+          return response.json().then(function (data) {
+            return { ok: response.ok, data: data };
+          });
+        })
+        .then(function (result) {
+          if (!result.ok || result.data.error) {
+            throw new Error(result.data.error || 'Location lookup failed.');
+          }
+
+          var location = result.data.location || {};
+          if (lat) lat.value = Number(location.latitude).toFixed(5);
+          if (lon) lon.value = Number(location.longitude).toFixed(5);
+          if (timezone && location.timezone) timezone.value = location.timezone;
+
+          if (status) {
+            status.textContent = 'Matched: ' + (location.displayName || query);
+            status.style.color = 'var(--success)';
+          }
+        })
+        .catch(function (err) {
+          if (status) {
+            status.textContent = err.message || 'Location lookup failed.';
+            status.style.color = 'var(--danger)';
+          }
+        })
+        .finally(function () {
+          button.disabled = false;
+          button.textContent = 'Look Up Address';
         });
     });
   }

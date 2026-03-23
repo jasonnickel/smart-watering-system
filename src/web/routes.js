@@ -20,6 +20,7 @@ import {
 
 import {
   handleStatus, handleCharts, handleAIStatus,
+  handleLocationSearch,
   handleReferenceETHistory, handleNDVIHistory,
   handleETValidationHistory, handleWeatherHistory,
   handleSoil, handleReferenceET, handleNDVI,
@@ -30,7 +31,7 @@ import {
 
 import {
   handleLogin, handleLogout, handleWater, handleShadowToggle,
-  handleSmokeTest, handleSettingsGuidedSave, handleSettingsRawSave,
+  handleSmokeTest, handleSettingsGuidedSave, handleSettingsNextSteps, handleSettingsRawSave,
   handleZonesGuidedSave, handleZonesRawSave,
 } from './action-handlers.js';
 
@@ -153,8 +154,9 @@ function buildGetRoutes(context) {
 
     // API - status and charts
     '/api/status': (ctx) => handleStatus(ctx.req, ctx.res),
-    '/api/charts': (ctx) => handleCharts(ctx.req, ctx.res),
+    '/api/charts': (ctx) => handleCharts(ctx.req, ctx.res, ctx.url),
     '/api/ai/status': (ctx) => handleAIStatus(ctx.req, ctx.res),
+    '/api/location-search': (ctx) => handleLocationSearch(ctx.req, ctx.res, ctx.url),
 
     // API - history
     '/api/history/reference-et': (ctx) => handleReferenceETHistory(ctx.req, ctx.res, ctx.url),
@@ -186,6 +188,7 @@ function buildPostRoutes(context) {
     '/action/smoke-test': (rctx) => handleSmokeTest(rctx.req, rctx.res, rctx.body, ctx),
     '/setup/save': (rctx) => handleSettingsGuidedSave(rctx.req, rctx.res, rctx.body, ctx),
     '/settings/guided-save': (rctx) => handleSettingsGuidedSave(rctx.req, rctx.res, rctx.body, ctx),
+    '/settings/next-steps': (rctx) => handleSettingsNextSteps(rctx.req, rctx.res, rctx.body),
     '/settings/save': (rctx) => handleSettingsRawSave(rctx.req, rctx.res, rctx.body, ctx),
     '/zones/guided-save': (rctx) => handleZonesGuidedSave(rctx.req, rctx.res, rctx.body, ctx),
     '/zones/save': (rctx) => handleZonesRawSave(rctx.req, rctx.res, rctx.body, ctx),

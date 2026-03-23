@@ -18,6 +18,7 @@ import { buildSatelliteAnalysis } from '../ai/satellite.js';
 import CONFIG from '../config.js';
 import { getSoilProfile } from '../api/usda-soil.js';
 import { getYesterdayReferenceET, backfillReferenceET } from '../api/coagmet.js';
+import { geocodeAddress } from '../api/geocode.js';
 import { ndviEnabled, getNDVIStats, getNDVIImage } from '../api/ndvi.js';
 import { serveJSON } from './http.js';
 
@@ -79,12 +80,27 @@ export function handleStatus(_req, res) {
   return serveJSON(res, getStatusJSON(localDateStr()));
 }
 
-export function handleCharts(_req, res) {
-  return serveJSON(res, getMoistureHistory(14));
+export function handleCharts(_req, res, url) {
+  const days = parsePositiveNumber(url?.searchParams.get('days'), 14, { min: 1, max: 90 });
+  return serveJSON(res, getMoistureHistory(days));
 }
 
 export function handleAIStatus(_req, res) {
   return serveJSON(res, { enabled: aiNarrationEnabled() });
+}
+
+export async function handleLocationSearch(_req, res, url) {
+  const query = String(url.searchParams.get('q') || '').trim();
+  if (query.length < 3) {
+    return serveJSON(res, { error: 'Enter at least 3 characters to look up an address.' }, 400);
+  }
+
+  try {
+    const location = await geocodeAddress(query);
+    return serveJSON(res, { location });
+  } catch (err) {
+    return serveJSON(res, { error: err.message }, 502);
+  }
 }
 
 // -- GET: History / data endpoints -------------------------------------------
