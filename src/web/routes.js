@@ -51,6 +51,7 @@ const PUBLIC_PATHS = new Set([
   '/icon-192.svg',
   '/icon-512.svg',
   '/styles.css',
+  '/theme.js',
 ]);
 
 function parseBody(req) {
@@ -298,8 +299,8 @@ export function createRequestHandler({ host, port, appRoot, envPath, zonesPath, 
         if (path === '/api/status') return serveJSON(res, getStatusJSON(localDateStr()));
         if (path === '/api/charts') return serveJSON(res, getMoistureHistory(14));
 
-        // PWA and CSS static files
-        if (path === '/manifest.json' || path === '/sw.js' || path === '/icon-192.svg' || path === '/icon-512.svg' || path === '/styles.css') {
+        // Static assets (PWA, CSS, theme toggle)
+        if (path === '/manifest.json' || path === '/sw.js' || path === '/icon-192.svg' || path === '/icon-512.svg' || path === '/styles.css' || path === '/theme.js') {
           return serveStatic(res, path, publicDir);
         }
       }

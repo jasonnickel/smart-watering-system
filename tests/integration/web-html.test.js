@@ -167,10 +167,17 @@ describe('HTML helpers', () => {
       assert.doesNotMatch(noAuth, /action="\/logout"/);
     });
 
-    it('links stylesheet instead of inline CSS', () => {
+    it('links stylesheet and theme script instead of inline CSS', () => {
       const html = layout('Test', '', 'dashboard');
       assert.match(html, /rel="stylesheet" href="\/styles\.css"/);
+      assert.match(html, /src="\/theme\.js"/);
       assert.doesNotMatch(html, /<style>/);
+    });
+
+    it('includes dark mode toggle button', () => {
+      const html = layout('Test', '', 'dashboard');
+      assert.match(html, /id="theme-toggle"/);
+      assert.match(html, /class="theme-toggle"/);
     });
   });
 });

@@ -81,12 +81,13 @@ export function layout(title, content, activeTab, options = {}) {
       </nav>`
     : '';
 
-  const logoutHtml = authEnabled && showNav
-    ? `<form method="POST" action="/logout" class="header-actions">
+  const headerActionsHtml = showNav ? `<div class="header-actions">
+      <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Toggle dark mode"></button>
+      ${authEnabled ? `<form method="POST" action="/logout" style="margin:0">
         ${csrfField(csrf)}
         ${button('Sign Out', 'secondary')}
-      </form>`
-    : '';
+      </form>` : ''}
+    </div>` : '';
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -95,6 +96,7 @@ export function layout(title, content, activeTab, options = {}) {
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>${escapeHtml(title)} - Smart Water</title>
   <link rel="stylesheet" href="/styles.css">
+  <script src="/theme.js"></script>
   <link rel="manifest" href="/manifest.json">
   <meta name="theme-color" content="#0b5fff">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -110,18 +112,13 @@ export function layout(title, content, activeTab, options = {}) {
         <h1>Smart Water System</h1>
         <p>Optional browser setup for non-coders, plus the same file-and-CLI workflow for power users.</p>
       </div>
-      ${logoutHtml}
+      ${headerActionsHtml}
     </div>
   </header>
   ${navHtml}
   <main id="main" class="container">
     ${content}
   </main>
-  <script>
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js').catch(() => {});
-    }
-  </script>
 </body>
 </html>`;
 }
