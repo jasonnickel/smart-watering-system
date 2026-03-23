@@ -4,6 +4,7 @@
 // Docs: https://sdmdataaccess.nrcs.usda.gov/
 
 import { log } from '../log.js';
+import { saveSoilSurvey, getCachedSoilSurvey } from '../db/state.js';
 
 const SDA_ENDPOINT = 'https://sdmdataaccess.sc.egov.usda.gov/Tabular/post.rest';
 const TIMEOUT_MS = 30000;
@@ -116,12 +117,35 @@ export async function getSoilHorizons(lat, lon) {
  * @returns {Promise<object|null>} Soil profile summary
  */
 export async function getSoilProfile(lat, lon) {
+  // Check DB cache first - soil data rarely changes
   try {
-    const rows = await querySDA(buildProfileQuery(lat, lon));
-    if (rows.length === 0) return null;
+    const cached = getCachedSoilSurvey(lat, lon);
+    if (cached) {
+      log(2, `USDA soil profile: using cached data for ${lat}, ${lon}`);
+      return {
+        soilName: cached.soil_name,
+        dominantPct: cached.dominant_pct,
+        totalAwcInches: cached.total_awc_inches,
+        awcPerInch: cached.awc_per_inch,
+        profileDepthInches: cached.profile_depth_inches,
+        avgPH: cached.avg_ph,
+        avgOrganicMatterPct: cached.avg_organic_matter_pct,
+        avgInfiltrationRate: cached.avg_infiltration_rate,
+        cached: true,
+      };
+    }
+  } catch {
+    // DB not initialized - proceed with live query
+  }
 
-    // Use the dominant component (highest comppct_r)
-    const dominant = rows[0];
+  try {
+    const [profileRows, horizonRows] = await Promise.all([
+      querySDA(buildProfileQuery(lat, lon)),
+      querySDA(buildSoilQuery(lat, lon)),
+    ]);
+    if (profileRows.length === 0) return null;
+
+    const dominant = profileRows[0];
     const totalAwcCm = parseFloat(dominant.total_awc_cm) || 0;
     const profileDepthCm = parseFloat(dominant.profile_depth_cm) || 0;
 
@@ -135,6 +159,13 @@ export async function getSoilProfile(lat, lon) {
       avgOrganicMatterPct: parseFloat(dominant.avg_organic_matter_pct) || null,
       avgInfiltrationRate: parseFloat(dominant.avg_ksat_um_per_sec) || null,
     };
+
+    // Cache in database
+    try {
+      saveSoilSurvey(lat, lon, profile, horizonRows);
+    } catch {
+      // DB not available - fine, we still return the data
+    }
 
     log(1, `USDA soil profile: ${profile.soilName} (${profile.dominantPct}% dominant), AWC ${profile.totalAwcInches.toFixed(2)}" over ${profile.profileDepthInches.toFixed(0)}" depth, pH ${profile.avgPH?.toFixed(1) || '?'}`);
     return profile;

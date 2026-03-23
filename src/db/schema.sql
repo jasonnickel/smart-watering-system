@@ -100,6 +100,68 @@ CREATE TABLE IF NOT EXISTS zone_tuning (
   applied INTEGER DEFAULT 0
 );
 
+-- USDA soil survey cache (queried once per location, rarely changes)
+CREATE TABLE IF NOT EXISTS soil_survey (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  lat REAL NOT NULL,
+  lon REAL NOT NULL,
+  soil_name TEXT,
+  dominant_pct REAL,
+  total_awc_inches REAL,
+  awc_per_inch REAL,
+  profile_depth_inches REAL,
+  avg_ph REAL,
+  avg_organic_matter_pct REAL,
+  avg_infiltration_rate REAL,
+  horizons_json TEXT,
+  fetched_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+-- CoAgMet reference ET history (daily, for cross-validation)
+CREATE TABLE IF NOT EXISTS reference_et (
+  date TEXT NOT NULL,
+  station TEXT NOT NULL,
+  reference_eto REAL,
+  reference_etr REAL,
+  temp_max REAL,
+  temp_min REAL,
+  solar_radiation REAL,
+  wind_speed REAL,
+  precipitation REAL,
+  fetched_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  PRIMARY KEY (date, station)
+);
+
+-- Sentinel-2 NDVI readings (per observation period)
+CREATE TABLE IF NOT EXISTS ndvi_history (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  lat REAL NOT NULL,
+  lon REAL NOT NULL,
+  period_from TEXT NOT NULL,
+  period_to TEXT NOT NULL,
+  ndvi_mean REAL,
+  ndvi_min REAL,
+  ndvi_max REAL,
+  sample_count INTEGER,
+  fetched_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+-- ET cross-validation log (system ET vs reference ET comparison)
+CREATE TABLE IF NOT EXISTS et_validation (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  date TEXT NOT NULL,
+  station TEXT NOT NULL,
+  calculated_et REAL NOT NULL,
+  reference_eto REAL NOT NULL,
+  deviation_pct REAL NOT NULL,
+  assessment TEXT,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_reference_et_date ON reference_et(date DESC);
+CREATE INDEX IF NOT EXISTS idx_ndvi_history_period ON ndvi_history(period_from DESC);
+CREATE INDEX IF NOT EXISTS idx_et_validation_date ON et_validation(date DESC);
+
 -- Index for recent run lookups
 CREATE INDEX IF NOT EXISTS idx_runs_timestamp ON runs(timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_runs_window ON runs(window, timestamp DESC);

@@ -9,6 +9,7 @@
 // 10m spatial resolution, ~5-day revisit, free tier: 10,000 PU/month
 
 import { log } from '../log.js';
+import { saveNDVIReading } from '../db/state.js';
 
 const TOKEN_URL = 'https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token';
 const STATS_URL = 'https://sh.dataspace.copernicus.eu/api/v1/statistics';
@@ -154,6 +155,11 @@ export async function getNDVIStats(lat, lon, options = {}) {
       samples: stats?.sampleCount ?? 0,
     };
   }).filter(r => r.mean !== null && r.samples > 0);
+
+  // Persist to database for historical tracking
+  for (const r of results) {
+    try { saveNDVIReading(lat, lon, r); } catch { /* DB may not be initialized */ }
+  }
 
   log(1, `NDVI: ${results.length} periods for ${lat}, ${lon}`);
   return results;
