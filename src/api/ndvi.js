@@ -49,14 +49,22 @@ function evaluatePixel(s) {
   return [Math.min(1, r), Math.min(1, g), Math.min(1, b)];
 }`;
 
-// True color satellite image (natural appearance)
+// True color satellite image - natural appearance with contrast enhancement
 const TRUE_COLOR_SCRIPT = `//VERSION=3
 function setup() {
-  return { input: ["B02", "B03", "B04", "SCL"], output: { bands: 3, sampleType: "AUTO" } };
+  return { input: ["B02", "B03", "B04", "B08", "SCL"], output: { bands: 3, sampleType: "AUTO" } };
+}
+function stretch(val) {
+  return Math.max(0, Math.min(1, (val - 0.02) * 3.0));
 }
 function evaluatePixel(s) {
-  if (s.SCL === 3 || s.SCL === 8 || s.SCL === 9 || s.SCL === 10) return [0.9, 0.9, 0.9];
-  return [Math.min(1, s.B04 * 3.5), Math.min(1, s.B03 * 3.5), Math.min(1, s.B02 * 3.5)];
+  if (s.SCL === 3 || s.SCL === 8 || s.SCL === 9 || s.SCL === 10) return [0.85, 0.85, 0.85];
+  var r = stretch(s.B04);
+  var g = stretch(s.B03);
+  var b = stretch(s.B02);
+  var nir = s.B08;
+  if (nir > 0.2) { g = Math.min(1, g * 1.15); }
+  return [r, g, b];
 }`;
 
 const SCRIPTS = {
@@ -206,9 +214,9 @@ export async function getNDVIImage(lat, lon, options = {}) {
   }
 
   const token = await getToken();
-  const sizeMeters = options.sizeMeters || 500;
+  const sizeMeters = options.sizeMeters || 800;
   const bbox = boundingBox(lat, lon, sizeMeters);
-  const widthPx = options.widthPx || 512;
+  const widthPx = options.widthPx || 800;
   const heightPx = widthPx;
   const date = options.date || new Date().toISOString().slice(0, 10);
   const from = new Date(new Date(date).getTime() - 10 * 86400000).toISOString().slice(0, 10) + 'T00:00:00Z';

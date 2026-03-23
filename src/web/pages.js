@@ -740,8 +740,8 @@ export function satellitePage(csrf) {
         <div class="form-row">
           <label for="sat-mode">Image Type</label>
           <select id="sat-mode">
-            <option value="ndvi" selected>Vegetation Health (NDVI enhanced)</option>
-            <option value="truecolor">True Color Satellite</option>
+            <option value="truecolor" selected>True Color Satellite</option>
+            <option value="ndvi">Vegetation Health (NDVI enhanced)</option>
           </select>
         </div>
         <button id="sat-load" class="btn btn-primary" type="button">Load Satellite Images</button>
