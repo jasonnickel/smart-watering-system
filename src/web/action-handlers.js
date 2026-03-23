@@ -17,12 +17,12 @@ import {
 } from './forms.js';
 import { log } from '../log.js';
 import {
-  authEnabled, hasValidSession, createSession, clearSession,
-  verifyPassword, safeNextPath, verifyCsrf, getCsrfToken,
+  authEnabled, createSession, clearSession,
+  verifyPassword, safeNextPath,
   checkLoginRate, recordLoginFailure, clearLoginFailures,
   AUTH_COOKIE_NAME, SESSION_TTL_MS,
 } from './auth.js';
-import { SECURITY_HEADERS, redirect } from './http.js';
+import { redirect } from './http.js';
 
 // -- Helpers -----------------------------------------------------------------
 

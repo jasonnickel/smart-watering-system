@@ -157,8 +157,8 @@ export function analyzeSoilConfig() {
 }
 
 /**
- * Fetch latest NDVI data if stale (older than 5 days).
- * Called after daily runs to keep satellite data fresh.
+ * Fetch latest monthly NDVI history if stale.
+ * Called after daily runs to keep the background vegetation signal fresh.
  */
 export async function refreshNDVIIfStale() {
   if (!ndviEnabled()) return;

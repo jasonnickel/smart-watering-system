@@ -19,7 +19,7 @@ import CONFIG from '../config.js';
 import { getSoilProfile } from '../api/usda-soil.js';
 import { getYesterdayReferenceET, backfillReferenceET } from '../api/coagmet.js';
 import { ndviEnabled, getNDVIStats, getNDVIImage } from '../api/ndvi.js';
-import { SECURITY_HEADERS, serveJSON } from './http.js';
+import { serveJSON } from './http.js';
 
 // -- Constants ---------------------------------------------------------------
 
