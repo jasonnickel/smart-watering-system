@@ -17,8 +17,11 @@ import {
 } from '../web-forms.js';
 import { getMoistureHistory } from '../charts.js';
 import { localDateStr } from '../time.js';
-import { getStatusJSON } from '../db/state.js';
+import { getStatusJSON, getRunsSince } from '../db/state.js';
 import { log } from '../log.js';
+import { aiNarrationEnabled } from '../ai/advisor.js';
+import { askYard } from '../ai/chat.js';
+import { generateNarrative } from '../ai/narratives.js';
 import {
   initAuth,
   authEnabled, hasValidSession, createSession, clearSession,
@@ -52,6 +55,7 @@ const PUBLIC_PATHS = new Set([
   '/icon-512.svg',
   '/styles.css',
   '/theme.js',
+  '/ai.js',
 ]);
 
 function parseBody(req) {
@@ -298,9 +302,10 @@ export function createRequestHandler({ host, port, appRoot, envPath, zonesPath, 
         if (path === '/charts') return serve(res, chartsPage(csrf));
         if (path === '/api/status') return serveJSON(res, getStatusJSON(localDateStr()));
         if (path === '/api/charts') return serveJSON(res, getMoistureHistory(14));
+        if (path === '/api/ai/status') return serveJSON(res, { enabled: aiNarrationEnabled() });
 
         // Static assets (PWA, CSS, theme toggle)
-        if (path === '/manifest.json' || path === '/sw.js' || path === '/icon-192.svg' || path === '/icon-512.svg' || path === '/styles.css' || path === '/theme.js') {
+        if (path === '/manifest.json' || path === '/sw.js' || path === '/icon-192.svg' || path === '/icon-512.svg' || path === '/styles.css' || path === '/theme.js' || path === '/ai.js') {
           return serveStatic(res, path, publicDir);
         }
       }
@@ -343,6 +348,47 @@ export function createRequestHandler({ host, port, appRoot, envPath, zonesPath, 
           res.writeHead(403, SECURITY_HEADERS);
           res.end('Forbidden - invalid CSRF token');
           return;
+        }
+
+        // AI API endpoints (JSON request/response, CSRF-protected)
+        if (path === '/api/ai/chat') {
+          if (!aiNarrationEnabled()) {
+            return serveJSON(res, { error: 'AI not configured' }, 503);
+          }
+          const question = body.get('question') || '';
+          if (!question.trim() || question.length > 500) {
+            return serveJSON(res, { error: 'Question required (max 500 chars)' }, 400);
+          }
+          try {
+            const result = await askYard(question.trim());
+            return serveJSON(res, { answer: result?.content || 'No response', reasoning: result?.reasoning || null });
+          } catch (err) {
+            log(0, `AI chat error: ${err.message}`);
+            return serveJSON(res, { error: 'AI request failed' }, 502);
+          }
+        }
+
+        if (path === '/api/ai/narrative') {
+          if (!aiNarrationEnabled()) {
+            return serveJSON(res, { error: 'AI not configured' }, 503);
+          }
+          const runId = parseInt(body.get('run_id') || '', 10);
+          if (!Number.isFinite(runId) || runId <= 0) {
+            return serveJSON(res, { error: 'Valid run_id required' }, 400);
+          }
+          try {
+            const weekAgo = new Date(Date.now() - 30 * 86400000).toISOString();
+            const runs = getRunsSince(weekAgo);
+            const run = runs.find(r => r.id === runId);
+            if (!run) {
+              return serveJSON(res, { error: 'Run not found' }, 404);
+            }
+            const result = await generateNarrative(run);
+            return serveJSON(res, { narrative: result?.narrative || null, reasoning: result?.reasoning || null });
+          } catch (err) {
+            log(0, `AI narrative error: ${err.message}`);
+            return serveJSON(res, { error: 'AI request failed' }, 502);
+          }
         }
 
         if (path === '/logout') {

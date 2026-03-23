@@ -97,6 +97,7 @@ export function layout(title, content, activeTab, options = {}) {
   <title>${escapeHtml(title)} - Smart Water</title>
   <link rel="stylesheet" href="/styles.css">
   <script src="/theme.js"></script>
+  <script src="/ai.js" defer></script>
   <link rel="manifest" href="/manifest.json">
   <meta name="theme-color" content="#0b5fff">
   <meta name="apple-mobile-web-app-capable" content="yes">

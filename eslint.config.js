@@ -69,6 +69,6 @@ export default [
     },
   },
   {
-    ignores: ['node_modules/**', 'src/public/sw.js', 'src/public/theme.js'],
+    ignores: ['node_modules/**', 'src/public/sw.js', 'src/public/theme.js', 'src/public/ai.js'],
   },
 ];
