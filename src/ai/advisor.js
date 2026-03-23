@@ -128,9 +128,10 @@ export async function callAdvisorModel(messages, options = {}) {
   }
 
   const baseUrl = (process.env.AI_API_BASE_URL || 'https://api.moonshot.ai/v1').replace(/\/+$/, '');
-  const model = process.env.AI_MODEL || 'moonshot-v1-8k';
+  const model = process.env.AI_MODEL || 'kimi-k2-thinking';
+  const isThinkingModel = model.includes('thinking');
   const timeoutSignal = globalThis.AbortSignal?.timeout
-    ? globalThis.AbortSignal.timeout(options.timeoutMs ?? 15000)
+    ? globalThis.AbortSignal.timeout(options.timeoutMs ?? (isThinkingModel ? 30000 : 15000))
     : undefined;
   const response = await fetch(`${baseUrl}/chat/completions`, {
     method: 'POST',
@@ -141,7 +142,7 @@ export async function callAdvisorModel(messages, options = {}) {
     body: JSON.stringify({
       model,
       temperature: options.temperature ?? 0.2,
-      max_tokens: options.maxTokens ?? 220,
+      max_tokens: options.maxTokens ?? (isThinkingModel ? 1024 : 220),
       messages,
     }),
     signal: timeoutSignal,
@@ -153,8 +154,11 @@ export async function callAdvisorModel(messages, options = {}) {
   }
 
   const payload = await response.json();
-  const content = extractMessageText(payload?.choices?.[0]?.message?.content);
-  return content || null;
+  const message = payload?.choices?.[0]?.message;
+  const content = extractMessageText(message?.content);
+  const reasoning = extractMessageText(message?.reasoning_content);
+
+  return { content: content || null, reasoning: reasoning || null };
 }
 
 export async function generateSummaryNarrative(context = {}) {
@@ -174,14 +178,16 @@ export async function generateSummaryNarrative(context = {}) {
       : [],
   };
 
-  return callAdvisorModel([
+  const result = await callAdvisorModel([
     {
       role: 'system',
-      content: 'You are an irrigation operations advisor. Write 2-4 concise sentences for a homeowner. Use only the supplied facts, stay advisory-only, and never invent measurements or recommendations that are not grounded in the input.',
+      content: 'You are an irrigation operations advisor for a homeowner running a smart sprinkler system. Think through the data carefully, identify anything that looks unusual or worth acting on, then write 2-4 concise sentences. Use only the supplied facts, stay advisory-only, and never invent measurements or recommendations that are not grounded in the input.',
     },
     {
       role: 'user',
-      content: `Summarize this smart irrigation status into a brief narrative with any noteworthy risks or tuning opportunities:\n${JSON.stringify(payload)}`,
+      content: `Analyze this smart irrigation status and provide a brief narrative with any noteworthy risks, anomalies, or tuning opportunities:\n${JSON.stringify(payload)}`,
     },
   ]);
+
+  return result?.content || null;
 }
