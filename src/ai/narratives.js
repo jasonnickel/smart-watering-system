@@ -71,7 +71,7 @@ export async function generateNarrative(run) {
       role: 'user',
       content: `Explain this irrigation decision in plain English:\n${buildRunContext(run)}`,
     },
-  ], { maxTokens: 1024, timeoutMs: 30000 });
+  ], { model: 'kimi-k2-thinking-turbo', maxTokens: 1024, timeoutMs: 60000 });
 
   if (result?.content) {
     cacheNarrative(run.id, result.content, result.reasoning);
