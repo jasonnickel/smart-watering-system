@@ -27,6 +27,11 @@ function monthIndex(dateStr) {
   return Number.isNaN(date.getTime()) ? -1 : date.getUTCMonth();
 }
 
+function isWinterMonth(dateStr) {
+  const month = monthIndex(dateStr);
+  return month === 11 || month === 0 || month === 1;
+}
+
 function signedValue(value) {
   return `${value >= 0 ? '+' : ''}${value.toFixed(2)}`;
 }
@@ -148,6 +153,123 @@ function buildHeadline(overallDirection, latestBand) {
     return `Vegetation signal is weakening and the latest month reads as ${currentLabel}.`;
   }
   return `Vegetation signal is relatively steady and the latest month reads as ${currentLabel}.`;
+}
+
+function coerceMean(entry) {
+  const mean = Number(entry?.mean ?? entry?.ndvi_mean);
+  return Number.isFinite(mean) ? mean : null;
+}
+
+function coerceSamples(entry) {
+  return Number(entry?.samples ?? entry?.sample_count) || 0;
+}
+
+function entryToStat(entry) {
+  return {
+    from: entry?.from || entry?.period_from || '',
+    to: entry?.to || entry?.period_to || '',
+    mean: coerceMean(entry),
+    samples: coerceSamples(entry),
+  };
+}
+
+function averageMean(entries = []) {
+  if (entries.length === 0) return null;
+  const total = entries.reduce((sum, entry) => sum + entry.mean, 0);
+  return total / entries.length;
+}
+
+function latestDateKey(entry) {
+  return String(entry.to || entry.from || '');
+}
+
+export function buildMonthlySatelliteStats(rawEntries = [], options = {}) {
+  const { limitMonths = 12 } = options;
+  const monthMap = new Map();
+
+  rawEntries.forEach(entry => {
+    const stat = entryToStat(entry);
+    if (!Number.isFinite(stat.mean)) return;
+    const keySource = stat.to || stat.from;
+    const monthKey = String(keySource).slice(0, 7);
+    if (!/^\d{4}-\d{2}$/.test(monthKey)) return;
+
+    const existing = monthMap.get(monthKey);
+    if (!existing) {
+      monthMap.set(monthKey, stat);
+      return;
+    }
+
+    const existingDate = latestDateKey(existing);
+    const candidateDate = latestDateKey(stat);
+    if (candidateDate > existingDate) {
+      monthMap.set(monthKey, stat);
+      return;
+    }
+    if (candidateDate === existingDate && stat.samples > existing.samples) {
+      monthMap.set(monthKey, stat);
+    }
+  });
+
+  return Array.from(monthMap.values())
+    .sort((left, right) => String(left.from || left.to).localeCompare(String(right.from || right.to)))
+    .slice(-limitMonths);
+}
+
+export function buildVegetationAdvisorInsight(rawEntries = [], options = {}) {
+  const monthlyStats = buildMonthlySatelliteStats(rawEntries, { limitMonths: options.limitMonths ?? 6 });
+  if (monthlyStats.length < 3) return null;
+
+  const analysis = buildSatelliteAnalysis(monthlyStats);
+  const latest = monthlyStats[monthlyStats.length - 1];
+  const latestDate = latest.to || latest.from;
+  const latestBand = classifyNdvi(latest.mean, latestDate);
+  const latestMonthLabel = analysis.latest?.monthLabel || monthYearLabel(latestDate);
+  const monthDelta = analysis.monthOverMonth?.delta ?? null;
+  const overallDelta = analysis.overall?.delta ?? 0;
+  const recentWindow = monthlyStats.slice(-3);
+  const priorWindow = monthlyStats.slice(-6, -3);
+  const recentAverage = averageMean(recentWindow);
+  const priorAverage = priorWindow.length === 3 ? averageMean(priorWindow) : null;
+  const rollingDelta = Number.isFinite(recentAverage) && Number.isFinite(priorAverage)
+    ? recentAverage - priorAverage
+    : null;
+  const persistentLow = recentWindow.length === 3 && recentWindow.every(entry => entry.mean < 0.30);
+  const latestIsWinter = isWinterMonth(latestDate);
+
+  // Winter dormancy produces too many false alarms for residential lawns.
+  if (latestIsWinter && overallDelta > -0.12 && (monthDelta == null || monthDelta > -0.08)) {
+    return null;
+  }
+
+  if (persistentLow && overallDelta > -0.05 && (monthDelta == null || monthDelta > -0.05)) {
+    return {
+      kind: 'vegetation-trend',
+      severity: latest.mean < 0.20 ? 'warning' : 'info',
+      title: 'Vegetation signal has stayed low',
+      summary: `The last three usable monthly vegetation readings have stayed in the ${latestBand.label.toLowerCase()} range, with ${latestMonthLabel} at ${latest.mean.toFixed(2)}. Treat this as a coarse background health signal: compare it with soil moisture, sprinkler coverage, mowing, and hardscape in the footprint before changing runtimes.`,
+    };
+  }
+
+  if (overallDelta <= -0.06 || monthDelta <= -0.05 || rollingDelta <= -0.05) {
+    return {
+      kind: 'vegetation-trend',
+      severity: overallDelta <= -0.10 || latest.mean < 0.20 ? 'warning' : 'info',
+      title: 'Vegetation signal is weakening',
+      summary: `The monthly vegetation signal fell to ${latest.mean.toFixed(2)} in ${latestMonthLabel} and is ${analysis.overall.summary}. Use this as a background cross-check on yard health, not a direct control input: if soil moisture looks adequate but this keeps sliding, inspect irrigation coverage, runoff, disease, or turf density.`,
+    };
+  }
+
+  if (overallDelta >= 0.06 && latest.mean >= 0.30) {
+    return {
+      kind: 'vegetation-trend',
+      severity: 'success',
+      title: 'Vegetation signal is improving',
+      summary: `The monthly vegetation signal is up to ${latest.mean.toFixed(2)} in ${latestMonthLabel} and is ${analysis.overall.summary}. That suggests the yard footprint is trending healthier over time, which supports the current irrigation strategy as a background validation signal.`,
+    };
+  }
+
+  return null;
 }
 
 export function buildSatelliteAnalysis(rawStats = []) {

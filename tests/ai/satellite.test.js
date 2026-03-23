@@ -1,7 +1,12 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { buildSatelliteAnalysis, classifyNdvi } from '../../src/ai/satellite.js';
+import {
+  buildMonthlySatelliteStats,
+  buildSatelliteAnalysis,
+  buildVegetationAdvisorInsight,
+  classifyNdvi,
+} from '../../src/ai/satellite.js';
 
 describe('Satellite analysis', () => {
   it('builds a stable facts-first summary from monthly NDVI stats', () => {
@@ -58,5 +63,48 @@ describe('Satellite analysis', () => {
     assert.equal(band.label, 'Very low or dormant signal');
     assert.match(analysis.seasonalityNote, /Winter months often read weak/i);
     assert.match(analysis.findings[0], /very low or dormant signal/i);
+  });
+
+  it('condenses multiple readings in the same month down to one monthly stat', () => {
+    const stats = buildMonthlySatelliteStats([
+      {
+        period_from: '2026-03-01T00:00:00Z',
+        period_to: '2026-03-12T23:59:59Z',
+        ndvi_mean: 0.26,
+        sample_count: 7,
+      },
+      {
+        period_from: '2026-03-01T00:00:00Z',
+        period_to: '2026-03-28T23:59:59Z',
+        ndvi_mean: 0.29,
+        sample_count: 10,
+      },
+      {
+        period_from: '2026-04-01T00:00:00Z',
+        period_to: '2026-04-22T23:59:59Z',
+        ndvi_mean: 0.33,
+        sample_count: 12,
+      },
+    ]);
+
+    assert.equal(stats.length, 2);
+    assert.equal(stats[0].to, '2026-03-28T23:59:59Z');
+    assert.equal(stats[0].mean, 0.29);
+    assert.equal(stats[1].to, '2026-04-22T23:59:59Z');
+  });
+
+  it('produces a background advisor insight when the monthly vegetation signal weakens', () => {
+    const insight = buildVegetationAdvisorInsight([
+      { period_from: '2025-07-01T00:00:00Z', period_to: '2025-07-31T23:59:59Z', ndvi_mean: 0.39, sample_count: 10 },
+      { period_from: '2025-08-01T00:00:00Z', period_to: '2025-08-31T23:59:59Z', ndvi_mean: 0.36, sample_count: 10 },
+      { period_from: '2025-09-01T00:00:00Z', period_to: '2025-09-30T23:59:59Z', ndvi_mean: 0.34, sample_count: 10 },
+      { period_from: '2025-10-01T00:00:00Z', period_to: '2025-10-31T23:59:59Z', ndvi_mean: 0.27, sample_count: 10 },
+      { period_from: '2025-11-01T00:00:00Z', period_to: '2025-11-30T23:59:59Z', ndvi_mean: 0.24, sample_count: 10 },
+      { period_from: '2025-12-01T00:00:00Z', period_to: '2025-12-31T23:59:59Z', ndvi_mean: 0.21, sample_count: 10 },
+    ]);
+
+    assert.equal(insight.kind, 'vegetation-trend');
+    assert.match(insight.title, /weakening|stayed low/i);
+    assert.match(insight.summary, /background/i);
   });
 });

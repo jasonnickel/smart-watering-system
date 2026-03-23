@@ -371,7 +371,7 @@ function renderAdvisorSection(insights) {
           <p class="helper">${escapeHtml(insight.summary)}</p>
         </div>`).join('')}
       </div>`
-    : '<p class="helper">No weather-confidence, rain-gauge, or flow-calibration issues have crossed the advisory thresholds recently.</p>';
+    : '<p class="helper">No weather, calibration, soil, or vegetation background signals have crossed the advisory thresholds recently.</p>';
 
   return `<div class="advisor-content">
     <p class="helper">Advisory-only suggestions. These notes never change the deterministic watering engine on their own.</p>
@@ -613,9 +613,10 @@ export function dashboardPage(query, zonesPath, csrf) {
 
     <div class="card">
       <h2>More</h2>
+      <p class="helper">Vegetation trend is already folded into Advisor Insights automatically. The satellite page is an optional deep-dive tool.</p>
       <div class="actions">
         <a class="btn btn-secondary" href="/briefing">Weekly Briefing</a>
-        <a class="btn btn-secondary" href="/satellite">Satellite Imagery</a>
+        <a class="btn btn-secondary" href="/satellite">Advanced Satellite Diagnostics</a>
       </div>
     </div>
   `, 'dashboard', { authEnabled: authEnabled(), csrf });

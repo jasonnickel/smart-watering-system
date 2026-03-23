@@ -10,6 +10,7 @@ import {
   logFlowAudit,
   logPrecipitationAudit,
   logWeatherDiscrepancy,
+  saveNDVIReading,
 } from '../../src/db/state.js';
 import {
   collectAdvisorInsights,
@@ -61,6 +62,37 @@ describe('Advisor insights', () => {
     assert.ok(insights.some(insight => insight.kind === 'forecast-confidence'));
     assert.ok(insights.some(insight => insight.kind === 'rain-gauge-bias'));
     assert.ok(insights.some(insight => insight.kind === 'flow-calibration' && /Zone 3/.test(insight.title)));
+  });
+
+  it('uses stored monthly vegetation history as a background advisor signal', () => {
+    initDB(makeTempDBPath());
+
+    const readings = [
+      ['2025-08-01T00:00:00Z', '2025-08-31T23:59:59Z', 0.38],
+      ['2025-09-01T00:00:00Z', '2025-09-30T23:59:59Z', 0.35],
+      ['2025-10-01T00:00:00Z', '2025-10-31T23:59:59Z', 0.31],
+      ['2025-11-01T00:00:00Z', '2025-11-30T23:59:59Z', 0.27],
+      ['2026-03-01T00:00:00Z', '2026-03-31T23:59:59Z', 0.23],
+      ['2026-04-01T00:00:00Z', '2026-04-30T23:59:59Z', 0.21],
+    ];
+
+    readings.forEach(([from, to, mean], index) => {
+      saveNDVIReading(39.7322, -105.2194, {
+        from,
+        to,
+        mean,
+        min: Math.max(0, mean - 0.05),
+        max: Math.min(1, mean + 0.10),
+        samples: 8 + index,
+      });
+    });
+
+    const insights = collectAdvisorInsights({ maxInsights: 8 });
+    const vegetation = insights.find(insight => insight.kind === 'vegetation-trend');
+
+    assert.ok(vegetation);
+    assert.match(vegetation.title, /Vegetation signal/i);
+    assert.match(vegetation.summary, /background/i);
   });
 
   it('calls the configured OpenAI-compatible provider for a summary narrative', async () => {

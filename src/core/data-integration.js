@@ -156,52 +156,6 @@ export function analyzeSoilConfig() {
   }
 }
 
-// -- NDVI vegetation health --------------------------------------------------
-
-/**
- * Analyze recent NDVI trends and generate advisor insights.
- *
- * @returns {object|null}
- */
-export function analyzeNDVITrend() {
-  if (!ndviEnabled()) return null;
-
-  try {
-    const history = getNDVIHistory(90, CONFIG.location.lat, CONFIG.location.lon);
-    if (history.length < 2) return null;
-
-    // Compare most recent to previous period
-    const latest = history[0];
-    const previous = history[1];
-
-    if (!latest.ndvi_mean || !previous.ndvi_mean) return null;
-
-    const change = latest.ndvi_mean - previous.ndvi_mean;
-    const changePct = (change / previous.ndvi_mean) * 100;
-
-    // Only flag significant changes
-    if (Math.abs(changePct) < 10) return null;
-
-    if (changePct < -10) {
-      return {
-        kind: 'ndvi-decline',
-        severity: changePct < -20 ? 'warning' : 'info',
-        title: `Vegetation health declined ${Math.abs(changePct).toFixed(0)}%`,
-        summary: `Satellite NDVI dropped from ${previous.ndvi_mean.toFixed(2)} to ${latest.ndvi_mean.toFixed(2)} between the last two observation periods. This could indicate drought stress, disease, dormancy onset, or recent mowing. Cross-reference with soil moisture data and watering history to determine the cause.`,
-      };
-    }
-
-    return {
-      kind: 'ndvi-improvement',
-      severity: 'success',
-      title: `Vegetation health improved ${changePct.toFixed(0)}%`,
-      summary: `Satellite NDVI increased from ${previous.ndvi_mean.toFixed(2)} to ${latest.ndvi_mean.toFixed(2)}, indicating healthier vegetation. The irrigation strategy appears to be working well for the current conditions.`,
-    };
-  } catch {
-    return null;
-  }
-}
-
 /**
  * Fetch latest NDVI data if stale (older than 5 days).
  * Called after daily runs to keep satellite data fresh.
@@ -213,21 +167,27 @@ export async function refreshNDVIIfStale() {
     const history = getNDVIHistory(30, CONFIG.location.lat, CONFIG.location.lon);
     const latestDate = history.length > 0 ? history[0].period_to : null;
 
-    // Skip if we have data from the last 5 days
+    // Monthly vegetation trends do not need daily refreshes.
     if (latestDate) {
       const daysSince = (Date.now() - new Date(latestDate).getTime()) / 86400000;
-      if (daysSince < 5) {
+      if (daysSince < 10) {
         log(2, `NDVI: fresh data exists (${daysSince.toFixed(0)} days old), skipping refresh`);
         return;
       }
     }
 
     const { lat, lon } = CONFIG.location;
-    const from = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10) + 'T00:00:00Z';
-    const to = new Date().toISOString().slice(0, 10) + 'T23:59:59Z';
+    const now = new Date();
+    const from = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 11, 1)).toISOString();
+    const to = `${now.toISOString().slice(0, 10)}T23:59:59Z`;
 
-    await getNDVIStats(lat, lon, { from, to, interval: 'P16D' });
-    log(1, 'NDVI: satellite data refreshed');
+    await getNDVIStats(lat, lon, {
+      from,
+      to,
+      interval: 'P1M',
+      lastIntervalBehavior: 'SHORTEN',
+    });
+    log(1, 'NDVI: monthly vegetation history refreshed');
   } catch (err) {
     log(1, `NDVI refresh failed: ${err.message}`);
   }
