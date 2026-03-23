@@ -2,7 +2,7 @@
 // Comprehensive trend analysis with multi-period windows and year-over-year comparison.
 // Runs as a Sunday morning systemd timer alongside the daily summary.
 
-import { getDB } from '../db/state.js';
+import { getDB, getRecentETValidation, getNDVIHistory } from '../db/state.js';
 import { localDateStr } from '../time.js';
 import { collectAdvisorInsights } from './advisor.js';
 import { callAdvisorModel, aiNarrationEnabled } from './advisor.js';
@@ -160,8 +160,36 @@ export function buildBriefingContext() {
     etCorrection: getETCorrection(z.zone_id),
   }));
 
-  // Active advisor insights
+  // Active advisor insights (now includes ET drift, soil mismatch, NDVI trend)
   const insights = collectAdvisorInsights();
+
+  // ET model accuracy over the last 30 days
+  let etAccuracy = null;
+  try {
+    const etValidation = getRecentETValidation(30);
+    if (etValidation.length > 0) {
+      const avgDev = etValidation.reduce((s, r) => s + r.deviation_pct, 0) / etValidation.length;
+      etAccuracy = {
+        samples: etValidation.length,
+        avgDeviationPct: Math.round(avgDev),
+        assessment: Math.abs(avgDev) < 15 ? 'accurate' : avgDev > 0 ? 'running high' : 'running low',
+      };
+    }
+  } catch { /* empty */ }
+
+  // NDVI vegetation trend
+  let ndviTrend = null;
+  try {
+    const ndvi = getNDVIHistory(90);
+    if (ndvi.length >= 2) {
+      ndviTrend = {
+        latest: ndvi[0].ndvi_mean,
+        previous: ndvi[1].ndvi_mean,
+        changePct: ndvi[1].ndvi_mean > 0 ? Math.round(((ndvi[0].ndvi_mean - ndvi[1].ndvi_mean) / ndvi[1].ndvi_mean) * 100) : 0,
+        latestDate: ndvi[0].period_from,
+      };
+    }
+  } catch { /* empty */ }
 
   return {
     today,
@@ -169,6 +197,8 @@ export function buildBriefingContext() {
     yoyComparison,
     weekTrend,
     etCorrections,
+    etAccuracy,
+    ndviTrend,
     insights,
   };
 }

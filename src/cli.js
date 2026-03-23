@@ -37,6 +37,7 @@ import { runSetup } from './setup.js';
 import { runGoLive } from './go-live.js';
 import { generateStatusPage } from './status-page.js';
 import { analyzeTuning } from './core/tuning.js';
+import { runDailyIntegrations } from './core/data-integration.js';
 import { getStatusJSON as getStatusJSONFromDB } from './db/state.js';
 import { connectMQTT, publishState, publishHADiscovery, disconnectMQTT } from './mqtt.js';
 
@@ -235,6 +236,8 @@ async function runScheduledCycle(shadow) {
       await executePlan(getWateringDecision(ctx), 'daily', shadow);
       // [4.2] Run adaptive tuning analysis after daily watering
       analyzeTuning(ctx.profiles);
+      // Cross-validate ET, refresh NDVI, and run data integrations
+      await runDailyIntegrations(ctx, localMonth(now));
     } else if (window === 'emergency') {
       await executePlan(getEmergencyCoolingDecision(ctx), 'emergency', shadow);
     }
