@@ -25,6 +25,11 @@ import {
 // -- Shared helpers ----------------------------------------------------------
 
 export function configuredSetupCard() {
+  // Only show the workflow card when setup is still in progress
+  const envContent = readEnvFile();
+  const model = buildGuidedSettingsModel(envContent);
+  if (model.rachioConfigured) return '';
+
   return `<div class="card">
     <h2>Choose Your Workflow</h2>
     <div class="setup-cta">
@@ -511,61 +516,20 @@ export function dashboardPage(query, zonesPath, csrf) {
       <p class="helper">Smoke testing becomes available after you leave shadow mode. It is intentionally optional so coders can keep using the CLI workflow instead.</p>
     </div>`;
 
+  // Setup is complete when Rachio key is configured
+  const setupComplete = envModel.rachioConfigured;
+  const hasMoistureData = status.moisture.length > 0;
+
   return layout('Dashboard', `
     ${noticeBanner(query)}
-    ${configuredSetupCard()}
-    ${!envModel.rachioConfigured ? `<div class="card notice notice-warning" role="status">
+
+    ${!setupComplete ? `<div class="card notice notice-warning" role="status">
       <h2>Finish Setup</h2>
       <p class="helper">The browser UI can walk you through setup, or you can keep using <span class="inline-code">smart-water setup</span> from the terminal.</p>
       <div class="actions">
         <a class="btn btn-primary" href="/setup">Open Guided Setup</a>
       </div>
     </div>` : ''}
-    <div class="grid grid-2">
-      <div class="card">
-        <h2>System Status</h2>
-        <div class="stat-list">
-          <div class="stat"><span>Mode</span><span>${isShadow ? badge('Shadow', 'warning') : badge('Live', 'success')}</span></div>
-          <div class="stat"><span>Weather</span><span>${weatherHtml}</span></div>
-          <div class="stat"><span>Last decision</span><span>${lastDecision}</span></div>
-        </div>
-        ${lastExplanation ? `<p style="font-size:13px;color:var(--muted);margin-top:8px;line-height:1.5;border-top:1px solid var(--border);padding-top:8px;">${escapeHtml(lastExplanation)}</p>` : ''}
-      </div>
-      <div class="card">
-        <h2>Setup Snapshot</h2>
-        <div class="stat-list">
-          <div class="stat"><span>Rachio key</span><span>${envModel.rachioConfigured ? badge('Saved', 'success') : badge('Missing', 'warning')}</span></div>
-          <div class="stat"><span>Ambient Weather</span><span>${envModel.ambientApiConfigured && envModel.ambientAppConfigured && envModel.ambientMacConfigured ? badge('Configured', 'success') : badge('Optional', 'neutral')}</span></div>
-          <div class="stat"><span>MQTT</span><span>${envModel.mqttBrokerUrl ? badge('Configured', 'success') : badge('Optional', 'neutral')}</span></div>
-          <div class="stat"><span>Web login</span><span>${authEnabled() ? badge('Enabled', 'success') : badge('Disabled', 'neutral')}</span></div>
-        </div>
-      </div>
-    </div>
-
-    ${forecastHtml ? `<div class="card"><h2>Forecast</h2>${forecastHtml}</div>` : ''}
-    ${renderAdvisorSection()}
-
-    <div class="card">
-      <h2>Quick Actions</h2>
-      <p class="helper">${isShadow ? 'Shadow mode records decisions without actuating Rachio.' : 'Live mode sends real watering commands to Rachio.'}</p>
-      ${actionsHtml}
-    </div>
-
-    ${smokeTestHtml}
-
-    <div class="card">
-      <h2>Soil Moisture</h2>
-      <div class="grid grid-2">${moistureHtml}</div>
-    </div>
-
-    <div class="card">
-      <h2>Water Usage</h2>
-      <div class="stat-list">
-        <div class="stat"><span>Today</span><span>${status.todayUsage.gallons.toFixed(0)} gal / $${status.todayUsage.cost.toFixed(2)}</span></div>
-        <div class="stat"><span>This month</span><span>${finance?.monthly_gallons?.toFixed(0) || 0} gal / $${finance?.monthly_cost?.toFixed(2) || '0.00'}</span></div>
-        <div class="stat"><span>Billing cycle</span><span>${finance?.cumulative_gallons?.toFixed(0) || 0} gal</span></div>
-      </div>
-    </div>
 
     ${aiNarrationEnabled() ? `<div class="card">
       <h2>Ask Your Yard</h2>
@@ -579,6 +543,50 @@ export function dashboardPage(query, zonesPath, csrf) {
       </form>
       <div id="chat-output" class="chat-output"></div>
     </div>` : ''}
+
+    <div class="grid grid-2">
+      <div class="card">
+        <h2>System Status</h2>
+        <div class="stat-list">
+          <div class="stat"><span>Mode</span><span>${isShadow ? badge('Shadow', 'warning') : badge('Live', 'success')}</span></div>
+          <div class="stat"><span>Weather</span><span>${weatherHtml}</span></div>
+          <div class="stat"><span>Last decision</span><span>${lastDecision}</span></div>
+        </div>
+        ${lastExplanation ? `<p style="font-size:13px;color:var(--muted);margin-top:8px;line-height:1.5;border-top:1px solid var(--border);padding-top:8px;">${escapeHtml(lastExplanation)}</p>` : ''}
+      </div>
+      ${!setupComplete ? `<div class="card">
+        <h2>Setup Snapshot</h2>
+        <div class="stat-list">
+          <div class="stat"><span>Rachio key</span><span>${envModel.rachioConfigured ? badge('Saved', 'success') : badge('Missing', 'warning')}</span></div>
+          <div class="stat"><span>Ambient Weather</span><span>${envModel.ambientApiConfigured && envModel.ambientAppConfigured && envModel.ambientMacConfigured ? badge('Configured', 'success') : badge('Optional', 'neutral')}</span></div>
+          <div class="stat"><span>MQTT</span><span>${envModel.mqttBrokerUrl ? badge('Configured', 'success') : badge('Optional', 'neutral')}</span></div>
+          <div class="stat"><span>Web login</span><span>${authEnabled() ? badge('Enabled', 'success') : badge('Disabled', 'neutral')}</span></div>
+        </div>
+      </div>` : `<div class="card">
+        <h2>Water Usage</h2>
+        <div class="stat-list">
+          <div class="stat"><span>Today</span><span>${status.todayUsage.gallons.toFixed(0)} gal / $${status.todayUsage.cost.toFixed(2)}</span></div>
+          <div class="stat"><span>This month</span><span>${finance?.monthly_gallons?.toFixed(0) || 0} gal / $${finance?.monthly_cost?.toFixed(2) || '0.00'}</span></div>
+          <div class="stat"><span>Billing cycle</span><span>${finance?.cumulative_gallons?.toFixed(0) || 0} gal</span></div>
+        </div>
+      </div>`}
+    </div>
+
+    ${hasMoistureData ? `<div class="card">
+      <h2>Soil Moisture</h2>
+      <div class="grid grid-2">${moistureHtml}</div>
+    </div>` : ''}
+
+    ${forecastHtml ? `<div class="card"><h2>Forecast</h2>${forecastHtml}</div>` : ''}
+    ${renderAdvisorSection()}
+
+    ${setupComplete ? `<div class="card">
+      <h2>Quick Actions</h2>
+      <p class="helper">${isShadow ? 'Shadow mode records decisions without actuating Rachio.' : 'Live mode sends real watering commands to Rachio.'}</p>
+      ${actionsHtml}
+    </div>` : ''}
+
+    ${smokeTestHtml}
   `, 'dashboard', { authEnabled: authEnabled(), csrf });
 }
 
