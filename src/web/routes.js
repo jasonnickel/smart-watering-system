@@ -17,7 +17,10 @@ import {
 } from '../web-forms.js';
 import { getMoistureHistory } from '../charts.js';
 import { localDateStr } from '../time.js';
-import { getStatusJSON, getRunsSince } from '../db/state.js';
+import {
+  getStatusJSON, getRunsSince,
+  getRecentReferenceET, getNDVIHistory, getRecentETValidation,
+} from '../db/state.js';
 import { log } from '../log.js';
 import { aiNarrationEnabled } from '../ai/advisor.js';
 import { askYard } from '../ai/chat.js';
@@ -25,7 +28,7 @@ import { generateNarrative } from '../ai/narratives.js';
 import { buildBriefingContext, generateBriefingNarrative } from '../ai/briefing.js';
 import CONFIG from '../config.js';
 import { getSoilProfile } from '../api/usda-soil.js';
-import { getYesterdayReferenceET } from '../api/coagmet.js';
+import { getYesterdayReferenceET, backfillReferenceET } from '../api/coagmet.js';
 import { ndviEnabled, getNDVIStats, getNDVIImage } from '../api/ndvi.js';
 import {
   initAuth,
@@ -309,6 +312,18 @@ export function createRequestHandler({ host, port, appRoot, envPath, zonesPath, 
         if (path === '/api/status') return serveJSON(res, getStatusJSON(localDateStr()));
         if (path === '/api/charts') return serveJSON(res, getMoistureHistory(14));
         if (path === '/api/ai/status') return serveJSON(res, { enabled: aiNarrationEnabled() });
+        if (path === '/api/history/reference-et') {
+          const days = parseInt(url.searchParams.get('days') || '30', 10);
+          return serveJSON(res, { data: getRecentReferenceET(Math.min(days, 730)) });
+        }
+        if (path === '/api/history/ndvi') {
+          const days = parseInt(url.searchParams.get('days') || '180', 10);
+          return serveJSON(res, { data: getNDVIHistory(Math.min(days, 730)) });
+        }
+        if (path === '/api/history/et-validation') {
+          const days = parseInt(url.searchParams.get('days') || '30', 10);
+          return serveJSON(res, { data: getRecentETValidation(Math.min(days, 730)) });
+        }
 
         // Data source API endpoints
         if (path === '/api/soil') {
@@ -463,6 +478,19 @@ export function createRequestHandler({ host, port, appRoot, envPath, zonesPath, 
           } catch (err) {
             log(0, `AI briefing error: ${err.message}`);
             return serveJSON(res, { error: 'AI request failed' }, 502);
+          }
+        }
+
+        // Data source backfill endpoint (long-running, returns when done)
+        if (path === '/api/backfill/reference-et') {
+          try {
+            const years = parseInt(body.get('years') || '2', 10);
+            const clampedYears = Math.min(Math.max(years, 1), 5);
+            const total = await backfillReferenceET({ years: clampedYears });
+            return serveJSON(res, { saved: total, years: clampedYears });
+          } catch (err) {
+            log(0, `Reference ET backfill error: ${err.message}`);
+            return serveJSON(res, { error: err.message }, 502);
           }
         }
 

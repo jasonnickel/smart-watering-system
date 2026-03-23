@@ -4,6 +4,7 @@
 // No API key required. Docs: https://coagmet.colostate.edu/data/doc.html
 
 import { log } from '../log.js';
+import { saveReferenceET } from '../db/state.js';
 
 const BASE_URL = 'https://coagmet.colostate.edu/data';
 const TIMEOUT_MS = 15000;
@@ -101,6 +102,11 @@ export async function getDailyET(options = {}) {
       precipitation: parseSafe(day.precip),
     })).filter(r => r.referenceETo !== null);
 
+    // Persist to database for historical analysis
+    for (const record of records) {
+      try { saveReferenceET(record, station); } catch { /* DB may not be initialized */ }
+    }
+
     log(2, `CoAgMet: ${records.length} daily records from ${station}`);
     return records;
   } catch (err) {
@@ -154,6 +160,46 @@ export function compareET(calculatedET, referenceETo) {
   }
 
   return { deviationPct: Math.round(deviationPct), assessment };
+}
+
+/**
+ * Backfill historical reference ET data.
+ * Fetches in 90-day chunks to avoid API limits.
+ *
+ * @param {object} options
+ * @param {number} [options.years] - How many years back (default: 2)
+ * @param {string} [options.station] - Station ID
+ * @returns {Promise<number>} Total records saved
+ */
+export async function backfillReferenceET(options = {}) {
+  const years = options.years || 2;
+  const station = options.station || DEFAULT_STATION;
+  const endDate = new Date();
+  const startDate = new Date(endDate.getTime() - years * 365 * 86400000);
+  const chunkDays = 90;
+  let totalSaved = 0;
+
+  log(1, `CoAgMet backfill: fetching ${years} years from ${station} (${startDate.toISOString().slice(0, 10)} to ${endDate.toISOString().slice(0, 10)})`);
+
+  let chunkStart = new Date(startDate);
+  while (chunkStart < endDate) {
+    const chunkEnd = new Date(Math.min(chunkStart.getTime() + chunkDays * 86400000, endDate.getTime()));
+    try {
+      const records = await getDailyET({
+        station,
+        from: chunkStart.toISOString().slice(0, 10),
+        to: chunkEnd.toISOString().slice(0, 10),
+      });
+      totalSaved += records.length;
+      log(1, `CoAgMet backfill: ${records.length} records for ${chunkStart.toISOString().slice(0, 10)} to ${chunkEnd.toISOString().slice(0, 10)}`);
+    } catch (err) {
+      log(0, `CoAgMet backfill chunk failed: ${err.message}`);
+    }
+    chunkStart = new Date(chunkEnd.getTime() + 86400000);
+  }
+
+  log(1, `CoAgMet backfill complete: ${totalSaved} total records`);
+  return totalSaved;
 }
 
 function parseSafe(value) {

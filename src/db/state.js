@@ -396,6 +396,62 @@ export function getStatus(dateStr) {
 /**
  * Get status as a JSON-serializable object for n8n webhook consumption.
  */
+// -- Soil survey cache -------------------------------------------------------
+
+export function saveSoilSurvey(lat, lon, profile, horizons) {
+  const db = getDB();
+  db.prepare(`INSERT INTO soil_survey (lat, lon, soil_name, dominant_pct, total_awc_inches, awc_per_inch, profile_depth_inches, avg_ph, avg_organic_matter_pct, avg_infiltration_rate, horizons_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .run(lat, lon, profile.soilName, profile.dominantPct, profile.totalAwcInches, profile.awcPerInch, profile.profileDepthInches, profile.avgPH, profile.avgOrganicMatterPct, profile.avgInfiltrationRate, JSON.stringify(horizons));
+}
+
+export function getCachedSoilSurvey(lat, lon) {
+  const db = getDB();
+  // Match within ~100m (0.001 degrees)
+  return db.prepare(`SELECT * FROM soil_survey WHERE abs(lat - ?) < 0.001 AND abs(lon - ?) < 0.001 ORDER BY fetched_at DESC LIMIT 1`).get(lat, lon) || null;
+}
+
+// -- Reference ET history ----------------------------------------------------
+
+export function saveReferenceET(record, station) {
+  const db = getDB();
+  db.prepare(`INSERT OR REPLACE INTO reference_et (date, station, reference_eto, reference_etr, temp_max, temp_min, solar_radiation, wind_speed, precipitation) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .run(record.date, station, record.referenceETo, record.referenceETr, record.tempMax, record.tempMin, record.solarRadiation, record.windSpeed, record.precipitation);
+}
+
+export function getRecentReferenceET(days = 14) {
+  const db = getDB();
+  const since = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
+  return db.prepare(`SELECT * FROM reference_et WHERE date >= ? ORDER BY date DESC`).all(since);
+}
+
+// -- NDVI history ------------------------------------------------------------
+
+export function saveNDVIReading(lat, lon, reading) {
+  const db = getDB();
+  db.prepare(`INSERT INTO ndvi_history (lat, lon, period_from, period_to, ndvi_mean, ndvi_min, ndvi_max, sample_count) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+    .run(lat, lon, reading.from, reading.to, reading.mean, reading.min, reading.max, reading.samples);
+}
+
+export function getNDVIHistory(days = 180) {
+  const db = getDB();
+  const since = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
+  return db.prepare(`SELECT * FROM ndvi_history WHERE period_from >= ? ORDER BY period_from DESC`).all(since);
+}
+
+// -- ET cross-validation log -------------------------------------------------
+
+export function logETValidation(date, station, calculatedET, referenceETo, deviationPct, assessment) {
+  const db = getDB();
+  db.prepare(`INSERT INTO et_validation (date, station, calculated_et, reference_eto, deviation_pct, assessment) VALUES (?, ?, ?, ?, ?, ?)`)
+    .run(date, station, calculatedET, referenceETo, deviationPct, assessment);
+}
+
+export function getRecentETValidation(days = 30) {
+  const db = getDB();
+  const since = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
+  return db.prepare(`SELECT * FROM et_validation WHERE date >= ? ORDER BY date DESC`).all(since);
+}
+
 export function getStatusJSON(dateStr) {
   const status = getStatus(dateStr);
   return {
