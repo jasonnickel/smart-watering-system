@@ -39,7 +39,7 @@ import {
 } from './auth.js';
 import {
   loginPage, dashboardPage, logsPage, zonesPage,
-  settingsPage, setupPage, chartsPage, briefingPage,
+  settingsPage, setupPage, chartsPage, briefingPage, satellitePage,
 } from './pages.js';
 
 // -- Constants ---------------------------------------------------------------
@@ -64,6 +64,7 @@ const PUBLIC_PATHS = new Set([
   '/styles.css',
   '/theme.js',
   '/ai.js',
+  '/satellite.js',
 ]);
 
 function parseBody(req) {
@@ -309,6 +310,7 @@ export function createRequestHandler({ host, port, appRoot, envPath, zonesPath, 
         if (path === '/setup') return serve(res, setupPage(url.searchParams, csrf));
         if (path === '/charts') return serve(res, chartsPage(csrf));
         if (path === '/briefing') return serve(res, briefingPage(csrf));
+        if (path === '/satellite') return serve(res, satellitePage(csrf));
         if (path === '/api/status') return serveJSON(res, getStatusJSON(localDateStr()));
         if (path === '/api/charts') return serveJSON(res, getMoistureHistory(14));
         if (path === '/api/ai/status') return serveJSON(res, { enabled: aiNarrationEnabled() });
@@ -377,7 +379,7 @@ export function createRequestHandler({ host, port, appRoot, envPath, zonesPath, 
         }
 
         // Static assets (PWA, CSS, theme toggle)
-        if (path === '/manifest.json' || path === '/sw.js' || path === '/icon-192.svg' || path === '/icon-512.svg' || path === '/styles.css' || path === '/theme.js' || path === '/ai.js') {
+        if (path === '/manifest.json' || path === '/sw.js' || path === '/icon-192.svg' || path === '/icon-512.svg' || path === '/styles.css' || path === '/theme.js' || path === '/ai.js' || path === '/satellite.js') {
           return serveStatic(res, path, publicDir);
         }
       }

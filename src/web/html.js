@@ -72,6 +72,7 @@ export function layout(title, content, activeTab, options = {}) {
     { id: 'zones', label: 'Zones', path: '/zones' },
     { id: 'charts', label: 'Charts', path: '/charts' },
     { id: 'briefing', label: 'Briefing', path: '/briefing' },
+    { id: 'satellite', label: 'Satellite', path: '/satellite' },
     { id: 'settings', label: 'Settings', path: '/settings' },
     { id: 'setup', label: 'Guided Setup', path: '/setup' },
   ];
@@ -99,6 +100,7 @@ export function layout(title, content, activeTab, options = {}) {
   <link rel="stylesheet" href="/styles.css">
   <script src="/theme.js"></script>
   <script src="/ai.js" defer></script>
+  <script src="/satellite.js" defer></script>
   <link rel="manifest" href="/manifest.json">
   <meta name="theme-color" content="#0b5fff">
   <meta name="apple-mobile-web-app-capable" content="yes">

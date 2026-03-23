@@ -567,6 +567,95 @@ summary {
   line-height: 1.6;
 }
 
+/* === Satellite timeline === */
+.sat-controls {
+  display: flex;
+  gap: 12px;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+.sat-controls .form-row {
+  flex: 1;
+  min-width: 180px;
+}
+.sat-controls .btn {
+  flex-shrink: 0;
+}
+.sat-gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+.sat-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  text-align: center;
+}
+.sat-img {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+.sat-img-placeholder, .sat-img-empty {
+  padding: 40px 12px;
+  color: var(--muted);
+  font-size: 0.85rem;
+  background: var(--neutral-bg);
+  min-height: 150px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.sat-date {
+  padding: 8px;
+  font-weight: 700;
+  font-size: 0.88rem;
+  margin: 0;
+  border-top: 1px solid var(--border-light);
+}
+.sat-legend {
+  display: grid;
+  gap: 8px;
+}
+.sat-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.9rem;
+}
+.sat-swatch {
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+.sat-trend {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+.sat-trend-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.sat-trend-label {
+  min-width: 50px;
+  font-size: 0.82rem;
+  color: var(--muted);
+  text-align: right;
+}
+.sat-trend-value {
+  min-width: 40px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-align: right;
+}
+
 /* === Responsive === */
 @media (max-width: 640px) {
   .header-inner {
