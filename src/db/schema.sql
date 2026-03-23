@@ -132,6 +132,23 @@ CREATE TABLE IF NOT EXISTS reference_et (
   PRIMARY KEY (date, station)
 );
 
+-- Historical daily weather archive (from OpenMeteo + Ambient)
+CREATE TABLE IF NOT EXISTS weather_history (
+  date TEXT NOT NULL,
+  source TEXT NOT NULL,
+  temp_max REAL,
+  temp_min REAL,
+  temp_avg REAL,
+  humidity REAL,
+  precipitation REAL,
+  solar_radiation REAL,
+  wind_speed REAL,
+  wind_gust REAL,
+  et_reference REAL,
+  fetched_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  PRIMARY KEY (date, source)
+);
+
 -- Sentinel-2 NDVI readings (per observation period)
 CREATE TABLE IF NOT EXISTS ndvi_history (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -158,6 +175,7 @@ CREATE TABLE IF NOT EXISTS et_validation (
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 
+CREATE INDEX IF NOT EXISTS idx_weather_history_date ON weather_history(date DESC);
 CREATE INDEX IF NOT EXISTS idx_reference_et_date ON reference_et(date DESC);
 CREATE INDEX IF NOT EXISTS idx_ndvi_history_period ON ndvi_history(period_from DESC);
 CREATE INDEX IF NOT EXISTS idx_et_validation_date ON et_validation(date DESC);

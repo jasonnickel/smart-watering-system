@@ -16,10 +16,12 @@ import {
   normalizeZones,
 } from '../web-forms.js';
 import { getMoistureHistory } from '../charts.js';
+import { backfillWeatherHistory } from '../api/openmeteo.js';
 import { localDateStr } from '../time.js';
 import {
   getStatusJSON, getRunsSince,
   getRecentReferenceET, getNDVIHistory, getRecentETValidation,
+  getWeatherHistory,
 } from '../db/state.js';
 import { log } from '../log.js';
 import { aiNarrationEnabled } from '../ai/advisor.js';
@@ -326,6 +328,11 @@ export function createRequestHandler({ host, port, appRoot, envPath, zonesPath, 
           const days = parseInt(url.searchParams.get('days') || '30', 10);
           return serveJSON(res, { data: getRecentETValidation(Math.min(days, 730)) });
         }
+        if (path === '/api/history/weather') {
+          const days = parseInt(url.searchParams.get('days') || '365', 10);
+          const source = url.searchParams.get('source') || null;
+          return serveJSON(res, { data: getWeatherHistory(Math.min(days, 730), source) });
+        }
 
         // Data source API endpoints
         if (path === '/api/soil') {
@@ -492,6 +499,18 @@ export function createRequestHandler({ host, port, appRoot, envPath, zonesPath, 
             return serveJSON(res, { saved: total, years: clampedYears });
           } catch (err) {
             log(0, `Reference ET backfill error: ${err.message}`);
+            return serveJSON(res, { error: err.message }, 502);
+          }
+        }
+
+        if (path === '/api/backfill/weather') {
+          try {
+            const years = parseInt(body.get('years') || '2', 10);
+            const clampedYears = Math.min(Math.max(years, 1), 5);
+            const total = await backfillWeatherHistory({ years: clampedYears });
+            return serveJSON(res, { saved: total, years: clampedYears });
+          } catch (err) {
+            log(0, `Weather backfill error: ${err.message}`);
             return serveJSON(res, { error: err.message }, 502);
           }
         }

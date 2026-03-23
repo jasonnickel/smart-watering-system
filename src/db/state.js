@@ -396,6 +396,31 @@ export function getStatus(dateStr) {
 /**
  * Get status as a JSON-serializable object for n8n webhook consumption.
  */
+// -- Weather history ---------------------------------------------------------
+
+export function saveWeatherDay(date, source, data) {
+  const db = getDB();
+  db.prepare(`INSERT OR REPLACE INTO weather_history (date, source, temp_max, temp_min, temp_avg, humidity, precipitation, solar_radiation, wind_speed, wind_gust, et_reference) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .run(date, source, data.tempMax ?? null, data.tempMin ?? null, data.tempAvg ?? null, data.humidity ?? null, data.precipitation ?? null, data.solarRadiation ?? null, data.windSpeed ?? null, data.windGust ?? null, data.etReference ?? null);
+}
+
+export function getWeatherHistory(days = 365, source = null) {
+  const db = getDB();
+  const since = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
+  if (source) {
+    return db.prepare('SELECT * FROM weather_history WHERE date >= ? AND source = ? ORDER BY date DESC').all(since, source);
+  }
+  return db.prepare('SELECT * FROM weather_history WHERE date >= ? ORDER BY date DESC').all(since);
+}
+
+export function getWeatherHistoryRange(startDate, endDate, source = null) {
+  const db = getDB();
+  if (source) {
+    return db.prepare('SELECT * FROM weather_history WHERE date >= ? AND date <= ? AND source = ? ORDER BY date ASC').all(startDate, endDate, source);
+  }
+  return db.prepare('SELECT * FROM weather_history WHERE date >= ? AND date <= ? ORDER BY date ASC').all(startDate, endDate);
+}
+
 // -- Soil survey cache -------------------------------------------------------
 
 export function saveSoilSurvey(lat, lon, profile, horizons) {
