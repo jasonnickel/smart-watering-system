@@ -130,8 +130,8 @@ On a Proxmox LXC, Node.js may already be installed. Check with `node --version`.
 **Step 2: Download and install**
 
 ```bash
-git clone https://github.com/jasonnickel/smart-watering-system.git ~/smart-water
-cd ~/smart-water
+git clone https://github.com/jasonnickel/smart-watering-system.git ~/taproot
+cd ~/taproot
 npm install --production
 ```
 
@@ -235,7 +235,7 @@ The web UI has four pages:
 **Settings** - System configuration
 - Toggle shadow/live mode
 - Edit API keys and environment variables
-- All changes saved to ~/.smart-water/.env
+- All changes saved to ~/.taproot/.env
 
 ## Daily Use
 
@@ -253,7 +253,7 @@ Once the system is running, you don't need to do anything. It makes decisions au
 
 **"No runs in the last 24 hours"**
 - Check that the systemd timer is running: `systemctl status smart-water.timer`
-- Or if using Docker: `docker logs smart-water-scheduler`
+- Or if using Docker: `docker logs taproot-scheduler`
 
 **"Rachio API: FAIL"**
 - Verify your API key at rachio.com -> Account Settings

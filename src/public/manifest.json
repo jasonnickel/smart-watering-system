@@ -1,7 +1,7 @@
 {
-  "name": "Smart Water System",
-  "short_name": "Smart Water",
-  "description": "Irrigation controller with ET-based soil moisture management",
+  "name": "Taproot",
+  "short_name": "Taproot",
+  "description": "Smart Irrigation System",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#edf2f7",

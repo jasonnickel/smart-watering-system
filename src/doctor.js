@@ -1,4 +1,4 @@
-// smart-water doctor
+// taproot doctor
 // Checks all system components and prints green/yellow/red status.
 // No stack traces, no jargon - just plain results.
 
@@ -11,10 +11,10 @@ import { homedir } from 'node:os';
 import { existsSync } from 'node:fs';
 import { getEnvFilePath, readShadowMode } from './env.js';
 
-const DB_PATH = process.env.DB_PATH || join(homedir(), '.smart-water', 'smart-water.db');
+const DB_PATH = process.env.DB_PATH || join(homedir(), '.taproot', 'taproot.db');
 const APP_ROOT = join(import.meta.dirname, '..');
 const APP_ZONES_PATH = join(APP_ROOT, 'zones.yaml');
-const HOME_ZONES_PATH = join(homedir(), '.smart-water', 'zones.yaml');
+const HOME_ZONES_PATH = join(homedir(), '.taproot', 'zones.yaml');
 
 const GREEN = '\x1b[32m';
 const YELLOW = '\x1b[33m';
@@ -35,7 +35,7 @@ let warnings = 0;
  * Run all doctor checks and print results.
  */
 export async function runDoctor() {
-  console.log(`\n${BOLD}Smart Water System - Health Check${RESET}\n`);
+  console.log(`\n${BOLD}Taproot - Health Check${RESET}\n`);
 
   // 1. Configuration
   console.log(`${BOLD}Configuration${RESET}`);
@@ -85,7 +85,7 @@ function checkEnvFile() {
   if (existsSync(envPath)) {
     ok('Environment file', envPath);
   } else {
-    fail('No .env file found', 'Run: smart-water setup');
+    fail('No .env file found', 'Run: taproot setup');
     issues++;
   }
 }
@@ -130,7 +130,7 @@ function checkZonesConfig() {
     const zoneCount = Object.keys(CONFIG.watering.zoneProfiles).length;
     ok('Zone config', `${zoneCount} zones from zones.yaml`);
   } else if (existsSync(HOME_ZONES_PATH)) {
-    ok('Zone config', 'from ~/.smart-water/zones.yaml');
+    ok('Zone config', 'from ~/.taproot/zones.yaml');
   } else {
     ok('Zone config', 'using defaults from config.js');
   }
@@ -218,7 +218,7 @@ function checkDatabase() {
 function checkMode() {
   if (readShadowMode()) {
     warn('Shadow mode is ON', 'decisions are logged but Rachio will not be actuated');
-    console.log(`       ${DIM}To go live: smart-water go-live${RESET}`);
+    console.log(`       ${DIM}To go live: taproot go-live${RESET}`);
   } else {
     ok('Live mode', 'Rachio will be actuated on WATER decisions');
   }

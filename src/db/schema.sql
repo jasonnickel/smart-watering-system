@@ -1,4 +1,4 @@
--- Smart Water System SQLite Schema
+-- Taproot SQLite Schema
 -- WAL mode is set programmatically on connection
 
 CREATE TABLE IF NOT EXISTS runs (

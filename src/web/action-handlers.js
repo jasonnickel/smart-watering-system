@@ -1,4 +1,4 @@
-// Action and mutation route handlers for the smart water web UI.
+// Action and mutation route handlers for the Taproot web UI.
 // Each handler is an async function receiving (req, res, body, context).
 
 import { dirname } from 'node:path';

@@ -296,6 +296,6 @@ export function buildBriefingHTML(context, narrative) {
 
     ${correctionRows ? `<h3 style="background:#fff3e0;padding:8px;border-radius:4px;margin-top:20px;">Active ET Corrections</h3><ul>${correctionRows}</ul>` : ''}
 
-    <p style="margin-top:30px;font-size:11px;color:#999;">Smart Water System - Weekly Intelligence Briefing</p>
+    <p style="margin-top:30px;font-size:11px;color:#999;">Taproot - Weekly Intelligence Briefing</p>
   </div>`;
 }

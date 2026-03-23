@@ -144,7 +144,7 @@ describe('HTML helpers', () => {
     it('renders a complete HTML document', () => {
       const html = layout('Test Page', '<p>content</p>', 'dashboard');
       assert.match(html, /<!DOCTYPE html>/);
-      assert.match(html, /<title>Test Page - Smart Water<\/title>/);
+      assert.match(html, /<title>Test Page - Taproot<\/title>/);
       assert.match(html, /href="\/styles\.css(?:\?v=\d+)?"/);
       assert.match(html, /<p>content<\/p>/);
     });

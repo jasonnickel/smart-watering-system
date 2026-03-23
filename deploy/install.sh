@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Smart Water System - Deployment Script
+# Taproot - Deployment Script
 # Run on the homelab server to install systemd units and set up the environment.
 #
 # Usage: ./install.sh [--dry-run]
@@ -10,9 +10,9 @@ readonly DRY_RUN="${1:-}"
 readonly SERVICE_DIR="/etc/systemd/system"
 readonly SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 readonly PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-readonly ENV_DIR="$HOME/.smart-water"
+readonly ENV_DIR="$HOME/.taproot"
 
-log() { echo "[smart-water-install] $1"; }
+log() { echo "[taproot-install] $1"; }
 
 run() {
   if [[ "$DRY_RUN" == "--dry-run" ]]; then

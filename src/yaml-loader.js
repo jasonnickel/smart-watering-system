@@ -9,12 +9,12 @@ import { log } from './log.js';
 
 const YAML_PATHS = [
   join(import.meta.dirname, '..', 'zones.yaml'),
-  join(process.env.HOME || '', '.smart-water', 'zones.yaml'),
+  join(process.env.HOME || '', '.taproot', 'zones.yaml'),
 ];
 
 const RATES_PATHS = [
   join(import.meta.dirname, '..', 'rates.yaml'),
-  join(process.env.HOME || '', '.smart-water', 'rates.yaml'),
+  join(process.env.HOME || '', '.taproot', 'rates.yaml'),
 ];
 
 /**

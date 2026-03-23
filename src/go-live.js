@@ -1,4 +1,4 @@
-// smart-water go-live
+// taproot go-live
 // Safety-checked transition from shadow mode to live mode.
 // Verifies the system has been running successfully before enabling actuation.
 
@@ -16,7 +16,7 @@ const YELLOW = '\x1b[33m';
 const RED = '\x1b[31m';
 const RESET = '\x1b[0m';
 
-const DB_PATH = process.env.DB_PATH || join(homedir(), '.smart-water', 'smart-water.db');
+const DB_PATH = process.env.DB_PATH || join(homedir(), '.taproot', 'taproot.db');
 const ENV_PATH = getEnvFilePath();
 
 const rl = createInterface({ input: process.stdin, output: process.stdout });
@@ -29,7 +29,7 @@ function confirm(question) {
 }
 
 export async function runGoLive() {
-  console.log(`\n${BOLD}Smart Water System - Go Live${RESET}\n`);
+  console.log(`\n${BOLD}Taproot - Go Live${RESET}\n`);
 
   // Check current mode
   if (!readShadowMode()) {
@@ -73,7 +73,7 @@ export async function runGoLive() {
     console.log(`  ${GREEN}OK${RESET}  Rachio API key configured`);
 
   } else {
-    console.log(`  ${RED}FAIL${RESET}  No Rachio API key. Run: smart-water setup`);
+    console.log(`  ${RED}FAIL${RESET}  No Rachio API key. Run: taproot setup`);
     failed++;
   }
 
@@ -100,7 +100,7 @@ export async function runGoLive() {
   console.log(`  - The system will send real watering commands to your Rachio controller`);
   console.log(`  - Your sprinklers will turn on when the system decides to water`);
   console.log(`  - You can switch back to shadow mode at any time by running:`);
-  console.log(`    ${BOLD}smart-water shadow${RESET}\n`);
+  console.log(`    ${BOLD}taproot shadow${RESET}\n`);
 
   const proceed = await confirm(`${BOLD}Enable live mode?${RESET}`);
 
@@ -115,7 +115,7 @@ export async function runGoLive() {
     writeEnvValue('SHADOW_MODE', 'false');
     console.log(`\n${GREEN}Live mode enabled.${RESET} SHADOW_MODE=false written to ${ENV_PATH}`);
     console.log(`\nThe system will actuate Rachio on the next watering decision.`);
-    console.log(`To switch back: run ${BOLD}smart-water shadow${RESET}\n`);
+    console.log(`To switch back: run ${BOLD}taproot shadow${RESET}\n`);
   } catch (err) {
     console.log(`\n${RED}Could not update .env: ${err.message}${RESET}`);
     console.log(`Manually set SHADOW_MODE=false in ${ENV_PATH}\n`);

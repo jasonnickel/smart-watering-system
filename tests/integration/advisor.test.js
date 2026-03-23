@@ -20,7 +20,7 @@ import {
 const tempDirs = [];
 
 function makeTempDBPath() {
-  const dir = mkdtempSync(join(tmpdir(), 'smart-water-advisor-'));
+  const dir = mkdtempSync(join(tmpdir(), 'taproot-advisor-'));
   tempDirs.push(dir);
   return join(dir, 'state.db');
 }

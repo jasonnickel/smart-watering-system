@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-// Smart Water System - Local Web UI
+// Taproot - Local Web UI
 // Lightweight HTTP server for browser-based management.
 // No framework - plain Node.js http module with server-rendered HTML.
 //
@@ -23,11 +23,11 @@ import { ensureNarrativeTable } from './ai/narratives.js';
 const APP_ROOT = join(import.meta.dirname, '..');
 const HOST = process.env.WEB_HOST || '127.0.0.1';
 const PORT = parseInt(process.env.WEB_PORT || '3000', 10);
-const DB_PATH = process.env.DB_PATH || join(homedir(), '.smart-water', 'smart-water.db');
+const DB_PATH = process.env.DB_PATH || join(homedir(), '.taproot', 'taproot.db');
 const ENV_PATH = getEnvFilePath();
 const ZONES_PATH = existsSync(join(APP_ROOT, 'zones.yaml'))
   ? join(APP_ROOT, 'zones.yaml')
-  : join(homedir(), '.smart-water', 'zones.yaml');
+  : join(homedir(), '.taproot', 'zones.yaml');
 const PUBLIC_DIR = join(import.meta.dirname, 'public');
 
 initDB(DB_PATH);

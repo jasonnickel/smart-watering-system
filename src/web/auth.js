@@ -2,7 +2,7 @@
 
 import { randomBytes, timingSafeEqual, createHash } from 'node:crypto';
 
-const AUTH_COOKIE_NAME = 'smart_water_session';
+const AUTH_COOKIE_NAME = 'taproot_session';
 const SESSION_TTL_MS = 12 * 60 * 60 * 1000;
 const MAX_LOGIN_ATTEMPTS = 5;
 const LOCKOUT_MS = 15 * 60 * 1000;

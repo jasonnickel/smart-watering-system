@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path';
 import { homedir } from 'node:os';
 
 export const PROJECT_ENV_PATH = join(import.meta.dirname, '..', '.env');
-export const HOME_ENV_PATH = join(homedir(), '.smart-water', '.env');
+export const HOME_ENV_PATH = join(homedir(), '.taproot', '.env');
 export const ACTIVE_ENV_PATH = existsSync(PROJECT_ENV_PATH) ? PROJECT_ENV_PATH : HOME_ENV_PATH;
 
 loadEnv({ path: ACTIVE_ENV_PATH });

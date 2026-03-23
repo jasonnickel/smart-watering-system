@@ -23,7 +23,7 @@ import {
 } from './db/state.js';
 import { sendSummaryEmail } from './notify.js';
 
-const DB_PATH = process.env.DB_PATH || join(homedir(), '.smart-water', 'smart-water.db');
+const DB_PATH = process.env.DB_PATH || join(homedir(), '.taproot', 'taproot.db');
 
 async function main() {
   initDB(DB_PATH);
@@ -126,7 +126,7 @@ async function main() {
     aiNarrative,
   });
 
-  const subject = `Smart Water Daily Report - ${todayStr}`;
+  const subject = `Taproot Daily Report - ${todayStr}`;
   await sendSummaryEmail(subject, html);
   log(1, 'Daily summary sent');
 }
@@ -177,7 +177,7 @@ function buildEmailHTML(d) {
   }
 
   return `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;font-size:14px;color:#333;line-height:1.6;max-width:600px;">
-    <h2 style="color:#1565c0;border-bottom:2px solid #1565c0;padding-bottom:5px;">Smart Water Daily Report</h2>
+    <h2 style="color:#1565c0;border-bottom:2px solid #1565c0;padding-bottom:5px;">Taproot Daily Report</h2>
     <p>${d.todayStr}</p>
 
     ${d.aiNarrative ? `<h3 style="background:#ede7f6;padding:8px;border-radius:4px;">Kimi Advisor</h3>
@@ -205,7 +205,7 @@ function buildEmailHTML(d) {
     ${advisorSection}
     ${precipBiasSection}
 
-    <p style="margin-top:30px;font-size:11px;color:#999;">Smart Water System - automated daily report</p>
+    <p style="margin-top:30px;font-size:11px;color:#999;">Taproot - automated daily report</p>
   </div>`;
 }
 

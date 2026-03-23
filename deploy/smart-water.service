@@ -1,14 +1,14 @@
 [Unit]
-Description=Smart Water System - Irrigation Decision Engine
+Description=Taproot - Irrigation Decision Engine
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=oneshot
 User=jason
-WorkingDirectory=/home/jason/smart-water
+WorkingDirectory=/home/jason/taproot
 ExecStart=/usr/bin/node src/cli.js run
-EnvironmentFile=/home/jason/.smart-water/.env
+EnvironmentFile=/home/jason/.taproot/.env
 
 # Timeout: if the script hangs on an API call, kill it after 5 minutes
 TimeoutStartSec=300
@@ -16,4 +16,4 @@ TimeoutStartSec=300
 # Logging to journal
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=smart-water
+SyslogIdentifier=taproot

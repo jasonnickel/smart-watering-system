@@ -13,7 +13,7 @@ COPY zones.yaml .env.example ./
 # Create data directory
 RUN mkdir -p /data
 
-ENV DB_PATH=/data/smart-water.db
+ENV DB_PATH=/data/taproot.db
 ENV STATUS_PAGE_PATH=/data/status.html
 ENV WEB_PORT=3000
 ENV SHADOW_MODE=true

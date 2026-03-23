@@ -1,4 +1,4 @@
-# Smart Water System - Docker Compose
+# Taproot - Docker Compose
 #
 # Quick start:
 #   1. Copy .env.example to .env and fill in your API keys
@@ -10,34 +10,34 @@
 # Use the web UI settings page to switch to live mode.
 
 services:
-  smart-water:
+  taproot:
     build: .
-    container_name: smart-water
+    container_name: taproot
     restart: unless-stopped
     ports:
       - "3000:3000"
     volumes:
-      - smart-water-data:/data
+      - taproot-data:/data
       - ./zones.yaml:/app/zones.yaml:ro
     env_file:
       - .env
     environment:
-      - DB_PATH=/data/smart-water.db
+      - DB_PATH=/data/taproot.db
       - STATUS_PAGE_PATH=/data/status.html
       - SHADOW_MODE=true
 
   # Hourly decision cycle
   scheduler:
     build: .
-    container_name: smart-water-scheduler
+    container_name: taproot-scheduler
     restart: unless-stopped
     volumes:
-      - smart-water-data:/data
+      - taproot-data:/data
       - ./zones.yaml:/app/zones.yaml:ro
     env_file:
       - .env
     environment:
-      - DB_PATH=/data/smart-water.db
+      - DB_PATH=/data/taproot.db
     # Run every hour using shell loop (no cron in Alpine)
     entrypoint: /bin/sh
     command:
@@ -53,15 +53,15 @@ services:
   # Daily summary at 6am UTC
   summary:
     build: .
-    container_name: smart-water-summary
+    container_name: taproot-summary
     restart: unless-stopped
     volumes:
-      - smart-water-data:/data
+      - taproot-data:/data
       - ./zones.yaml:/app/zones.yaml:ro
     env_file:
       - .env
     environment:
-      - DB_PATH=/data/smart-water.db
+      - DB_PATH=/data/taproot.db
     entrypoint: /bin/sh
     command:
       - -c
@@ -79,15 +79,15 @@ services:
   # Watchdog at 2am UTC
   watchdog:
     build: .
-    container_name: smart-water-watchdog
+    container_name: taproot-watchdog
     restart: unless-stopped
     volumes:
-      - smart-water-data:/data
+      - taproot-data:/data
       - ./zones.yaml:/app/zones.yaml:ro
     env_file:
       - .env
     environment:
-      - DB_PATH=/data/smart-water.db
+      - DB_PATH=/data/taproot.db
     entrypoint: /bin/sh
     command:
       - -c
@@ -103,4 +103,4 @@ services:
         done
 
 volumes:
-  smart-water-data:
+  taproot-data:

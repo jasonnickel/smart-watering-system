@@ -17,7 +17,7 @@ const ORIGINAL_COPERNICUS_EMAIL = process.env.COPERNICUS_EMAIL;
 const ORIGINAL_COPERNICUS_PASSWORD = process.env.COPERNICUS_PASSWORD;
 
 function makeTempDir() {
-  const dir = mkdtempSync(join(tmpdir(), 'smart-water-web-'));
+  const dir = mkdtempSync(join(tmpdir(), 'taproot-web-'));
   tempDirs.push(dir);
   return dir;
 }

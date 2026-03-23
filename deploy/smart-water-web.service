@@ -1,17 +1,17 @@
 [Unit]
-Description=Smart Water System - Web UI
+Description=Taproot - Web UI
 After=network-online.target
 
 [Service]
 Type=simple
-WorkingDirectory=/opt/smart-water
+WorkingDirectory=/opt/taproot
 ExecStart=/usr/bin/node src/web.js
-EnvironmentFile=/root/.smart-water/.env
+EnvironmentFile=/root/.taproot/.env
 Restart=on-failure
 RestartSec=10
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=smart-water-web
+SyslogIdentifier=taproot-web
 
 [Install]
 WantedBy=multi-user.target

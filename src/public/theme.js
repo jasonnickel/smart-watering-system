@@ -1,6 +1,6 @@
 // Dark mode toggle - persists preference in localStorage
 (function () {
-  var STORAGE_KEY = 'smart-water-theme';
+  var STORAGE_KEY = 'taproot-theme';
   var html = document.documentElement;
 
   function getPreferred() {

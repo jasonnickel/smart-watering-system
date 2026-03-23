@@ -13,7 +13,7 @@ import { initDB } from './db/state.js';
 import { sendSummaryEmail } from './notify.js';
 import { buildBriefingContext, generateBriefingNarrative, buildBriefingHTML } from './ai/briefing.js';
 
-const DB_PATH = process.env.DB_PATH || join(homedir(), '.smart-water', 'smart-water.db');
+const DB_PATH = process.env.DB_PATH || join(homedir(), '.taproot', 'taproot.db');
 
 async function main() {
   initDB(DB_PATH);
@@ -30,7 +30,7 @@ async function main() {
   }
 
   const html = buildBriefingHTML(context, narrative);
-  const subject = `Smart Water Weekly Briefing - ${context.today}`;
+  const subject = `Taproot Weekly Briefing - ${context.today}`;
 
   await sendSummaryEmail(subject, html);
   log(1, 'Weekly briefing sent');
