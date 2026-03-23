@@ -128,7 +128,7 @@ export async function callAdvisorModel(messages, options = {}) {
   }
 
   const baseUrl = (process.env.AI_API_BASE_URL || 'https://api.moonshot.ai/v1').replace(/\/+$/, '');
-  const model = process.env.AI_MODEL || 'kimi-k2-thinking';
+  const model = options.model || process.env.AI_MODEL || 'kimi-k2-thinking';
   const isThinkingModel = model.includes('thinking');
   const timeoutSignal = globalThis.AbortSignal?.timeout
     ? globalThis.AbortSignal.timeout(options.timeoutMs ?? (isThinkingModel ? 30000 : 15000))
