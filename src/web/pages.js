@@ -15,7 +15,7 @@ import { localDateStr, minutesSinceTimestamp } from '../time.js';
 import {
   getStatus, getRunsSince, getFinanceData, getCachedWeather,
 } from '../db/state.js';
-import { collectAdvisorInsights } from '../ai/advisor.js';
+import { collectAdvisorInsights, aiNarrationEnabled } from '../ai/advisor.js';
 import { authEnabled, safeNextPath } from './auth.js';
 import {
   layout, noticeBanner, escapeHtml, badge, button,
@@ -566,6 +566,19 @@ export function dashboardPage(query, zonesPath, csrf) {
         <div class="stat"><span>Billing cycle</span><span>${finance?.cumulative_gallons?.toFixed(0) || 0} gal</span></div>
       </div>
     </div>
+
+    ${aiNarrationEnabled() ? `<div class="card">
+      <h2>Ask Your Yard</h2>
+      <p class="helper">Ask questions about your irrigation system in plain English. Answers are grounded in your live data.</p>
+      <form id="chat-form" class="chat-form">
+        ${csrfField(csrf)}
+        <div class="chat-input-row">
+          <input id="chat-input" type="text" placeholder="Why didn't you water yesterday?" maxlength="500" autocomplete="off">
+          ${button('Ask', 'primary')}
+        </div>
+      </form>
+      <div id="chat-output" class="chat-output"></div>
+    </div>` : ''}
   `, 'dashboard', { authEnabled: authEnabled(), csrf });
 }
 
@@ -578,13 +591,23 @@ export function logsPage(query, csrf) {
     `<a class="btn ${hours === value ? 'btn-primary' : 'btn-secondary'}" href="/logs?hours=${value}">${value === 168 ? '7 days' : `${value}h`}</a>`
   ).join('');
 
+  const aiEnabled = aiNarrationEnabled();
   const rows = runs.length > 0
-    ? runs.map(run => `<tr>
+    ? runs.map(run => {
+        const reasonText = escapeHtml(run.phase === 'DECIDE' ? shortExplanation(run) : (run.reason || ''));
+        const narrativeBtn = aiEnabled && run.phase === 'DECIDE' && run.id
+          ? ` <button class="btn-inline" data-narrative-run="${run.id}">Explain</button>`
+          : '';
+        const narrativeContainer = aiEnabled && run.phase === 'DECIDE' && run.id
+          ? `<tr class="narrative-row"><td colspan="5"><div id="narrative-${run.id}" class="narrative-container" style="display:none"></div></td></tr>`
+          : '';
+        return `<tr>
         <td>${escapeHtml(run.timestamp?.slice(0, 16).replace('T', ' ') || '?')}</td>
         <td>${escapeHtml(run.phase)}</td>
         <td>${run.decision === 'WATER' ? badge('Water', 'success') : badge('Skip', 'warning')}${run.success ? '' : ` ${badge('Failed', 'error')}`}${run.shadow ? ` ${badge('Shadow', 'neutral')}` : ''}</td>
-        <td title="${escapeHtml(explainDecision(run))}">${escapeHtml(run.phase === 'DECIDE' ? shortExplanation(run) : (run.reason || ''))}</td>
-      </tr>`).join('')
+        <td title="${escapeHtml(explainDecision(run))}">${reasonText}${narrativeBtn}</td>
+      </tr>${narrativeContainer}`;
+      }).join('')
     : '<tr><td colspan="4">No runs in this time period.</td></tr>';
 
   return layout('Run History', `

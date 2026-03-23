@@ -499,6 +499,73 @@ summary {
   font-weight: 700;
 }
 
+/* === Ask Your Yard chat === */
+.chat-form {
+  margin-bottom: 12px;
+}
+.chat-input-row {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+.chat-input-row input {
+  flex: 1;
+  min-width: 0;
+}
+.chat-input-row .btn {
+  flex-shrink: 0;
+}
+.chat-output {
+  min-height: 0;
+}
+.chat-answer {
+  padding: 14px;
+  background: var(--primary-bg);
+  border-radius: 12px;
+  line-height: 1.6;
+  margin-top: 12px;
+}
+.chat-reasoning {
+  margin-top: 8px;
+}
+.chat-reasoning p {
+  padding: 10px;
+  background: var(--neutral-bg);
+  border-radius: 8px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+/* === Decision narratives === */
+.btn-inline {
+  display: inline;
+  background: none;
+  border: none;
+  color: var(--primary);
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.84rem;
+  padding: 2px 6px;
+  border-radius: 6px;
+  margin-left: 6px;
+}
+.btn-inline:hover {
+  background: var(--primary-bg);
+}
+.narrative-row td {
+  padding-top: 0;
+  border-bottom: 2px solid var(--primary-border);
+}
+.narrative-container {
+  padding: 12px;
+  background: var(--primary-bg);
+  border-radius: 10px;
+  margin-bottom: 4px;
+}
+.narrative-text {
+  line-height: 1.6;
+}
+
 /* === Responsive === */
 @media (max-width: 640px) {
   .header-inner {

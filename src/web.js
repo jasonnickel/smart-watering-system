@@ -18,6 +18,7 @@ import { log } from './log.js';
 import { initDB } from './db/state.js';
 import { initAuth } from './web/auth.js';
 import { createRequestHandler } from './web/routes.js';
+import { ensureNarrativeTable } from './ai/narratives.js';
 
 const APP_ROOT = join(import.meta.dirname, '..');
 const HOST = process.env.WEB_HOST || '127.0.0.1';
@@ -30,6 +31,7 @@ const ZONES_PATH = existsSync(join(APP_ROOT, 'zones.yaml'))
 const PUBLIC_DIR = join(import.meta.dirname, 'public');
 
 initDB(DB_PATH);
+ensureNarrativeTable();
 initAuth(process.env.WEB_UI_PASSWORD);
 
 const handler = createRequestHandler({
