@@ -127,7 +127,7 @@ export async function callAdvisorModel(messages, options = {}) {
     return null;
   }
 
-  const baseUrl = (process.env.AI_API_BASE_URL || 'https://api.moonshot.cn/v1').replace(/\/+$/, '');
+  const baseUrl = (process.env.AI_API_BASE_URL || 'https://api.moonshot.ai/v1').replace(/\/+$/, '');
   const model = process.env.AI_MODEL || 'moonshot-v1-8k';
   const timeoutSignal = globalThis.AbortSignal?.timeout
     ? globalThis.AbortSignal.timeout(options.timeoutMs ?? 15000)
