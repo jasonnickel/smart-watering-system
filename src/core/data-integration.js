@@ -33,7 +33,8 @@ export async function crossValidateET(yesterdayWeather, month) {
       return null;
     }
 
-    const calculatedET = calculateDailyET(yesterdayWeather, month);
+    const observedMonth = Number.parseInt(ref.date?.slice(5, 7) || '', 10);
+    const calculatedET = calculateDailyET(yesterdayWeather, Number.isFinite(observedMonth) ? observedMonth : month);
     const { deviationPct, assessment } = compareET(calculatedET, ref.referenceETo);
 
     logETValidation(ref.date, ref.station, calculatedET, ref.referenceETo, deviationPct, assessment);
@@ -166,7 +167,7 @@ export function analyzeNDVITrend() {
   if (!ndviEnabled()) return null;
 
   try {
-    const history = getNDVIHistory(90);
+    const history = getNDVIHistory(90, CONFIG.location.lat, CONFIG.location.lon);
     if (history.length < 2) return null;
 
     // Compare most recent to previous period
@@ -209,7 +210,7 @@ export async function refreshNDVIIfStale() {
   if (!ndviEnabled()) return;
 
   try {
-    const history = getNDVIHistory(30);
+    const history = getNDVIHistory(30, CONFIG.location.lat, CONFIG.location.lon);
     const latestDate = history.length > 0 ? history[0].period_to : null;
 
     // Skip if we have data from the last 5 days

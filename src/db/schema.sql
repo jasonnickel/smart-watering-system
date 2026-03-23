@@ -163,6 +163,13 @@ CREATE TABLE IF NOT EXISTS ndvi_history (
   fetched_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 
+DELETE FROM ndvi_history
+WHERE id NOT IN (
+  SELECT MAX(id)
+  FROM ndvi_history
+  GROUP BY lat, lon, period_from, period_to
+);
+
 -- ET cross-validation log (system ET vs reference ET comparison)
 CREATE TABLE IF NOT EXISTS et_validation (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -178,6 +185,7 @@ CREATE TABLE IF NOT EXISTS et_validation (
 CREATE INDEX IF NOT EXISTS idx_weather_history_date ON weather_history(date DESC);
 CREATE INDEX IF NOT EXISTS idx_reference_et_date ON reference_et(date DESC);
 CREATE INDEX IF NOT EXISTS idx_ndvi_history_period ON ndvi_history(period_from DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_ndvi_history_unique ON ndvi_history(lat, lon, period_from, period_to);
 CREATE INDEX IF NOT EXISTS idx_et_validation_date ON et_validation(date DESC);
 
 -- Index for recent run lookups

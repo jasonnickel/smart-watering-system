@@ -3,6 +3,7 @@
 // Runs as a Sunday morning systemd timer alongside the daily summary.
 
 import { getDB, getRecentETValidation, getNDVIHistory } from '../db/state.js';
+import CONFIG from '../config.js';
 import { localDateStr } from '../time.js';
 import { collectAdvisorInsights } from './advisor.js';
 import { callAdvisorModel, aiNarrationEnabled } from './advisor.js';
@@ -180,7 +181,7 @@ export function buildBriefingContext() {
   // NDVI vegetation trend
   let ndviTrend = null;
   try {
-    const ndvi = getNDVIHistory(90);
+    const ndvi = getNDVIHistory(90, CONFIG.location.lat, CONFIG.location.lon);
     if (ndvi.length >= 2) {
       ndviTrend = {
         latest: ndvi[0].ndvi_mean,

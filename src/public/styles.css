@@ -297,8 +297,12 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 .actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 12px;
   align-items: center;
+  margin-top: 16px;
+}
+.actions:first-child {
+  margin-top: 0;
 }
 
 /* === Stats === */
@@ -393,6 +397,44 @@ textarea {
   margin-top: 2px;
 }
 
+/* === Secret fields (locked/edit toggle) === */
+.secret-field .secret-input {
+  display: none;
+}
+.secret-field.secret-editing .secret-locked {
+  display: none;
+}
+.secret-field.secret-editing .secret-input {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.secret-field.secret-editing .secret-input input {
+  flex: 1;
+  min-width: 0;
+}
+.secret-locked {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--input-bg);
+  min-height: 44px;
+}
+.secret-dots {
+  flex: 1;
+  color: var(--muted);
+  letter-spacing: 2px;
+  font-size: 0.9rem;
+}
+.btn-sm {
+  padding: 6px 12px;
+  font-size: 0.84rem;
+  min-height: 32px;
+}
+
 /* === Tables === */
 .table-wrapper {
   overflow-x: auto;
@@ -423,13 +465,63 @@ caption {
 /* === Details / Collapsible === */
 details {
   border-top: 1px solid var(--border-light);
-  padding-top: 14px;
-  margin-top: 14px;
+  padding-top: 16px;
+  margin-top: 16px;
+}
+details[open] > summary {
+  margin-bottom: 16px;
 }
 summary {
   cursor: pointer;
   font-weight: 700;
   color: var(--primary-dark);
+  padding: 8px 0;
+}
+
+/* Card-level collapsible sections (outside a card) */
+.card-details {
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  padding: 20px;
+  margin-bottom: 16px;
+  border-top: 1px solid var(--border);
+}
+.card-details > summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0;
+}
+.card-details[open] > summary {
+  margin-bottom: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border-light);
+}
+
+/* Settings progressive disclosure */
+.settings-extra {
+  border: 0;
+  border-top: 0;
+  padding-top: 8px;
+  margin-top: 8px;
+}
+.settings-extra > summary {
+  padding: 10px 0;
+}
+.settings-extra[open] > summary {
+  margin-bottom: 12px;
+}
+
+/* Card footnote */
+.card-footnote {
+  font-size: 0.86rem;
+  color: var(--muted);
+  margin: 12px 0 0;
+  line-height: 1.5;
+  border-top: 1px solid var(--border-light);
+  padding-top: 12px;
 }
 
 /* === Moisture meter === */
@@ -476,6 +568,9 @@ summary {
 }
 
 /* === Advisor === */
+.advisor-content {
+  padding-top: 4px;
+}
 .advisor-list {
   display: grid;
   gap: 12px;
@@ -579,13 +674,16 @@ summary {
   flex: 1;
   min-width: 180px;
 }
+.sat-controls input[type="range"] {
+  width: 100%;
+}
 .sat-controls .btn {
   flex-shrink: 0;
 }
 .sat-gallery {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 16px;
   margin-top: 16px;
 }
 .sat-card {
@@ -593,12 +691,40 @@ summary {
   border: 1px solid var(--border);
   border-radius: 12px;
   overflow: hidden;
-  text-align: center;
+  box-shadow: var(--shadow);
+}
+.sat-stack {
+  position: relative;
+  aspect-ratio: 1 / 1;
+  background: #d8d1bf;
+  overflow: hidden;
 }
 .sat-img {
+  position: absolute;
+  inset: 0;
   width: 100%;
-  height: auto;
+  height: 100%;
+  object-fit: cover;
   display: block;
+}
+.sat-base {
+  z-index: 1;
+}
+.sat-overlay {
+  z-index: 2;
+}
+.sat-card-body {
+  padding: 12px 14px 14px;
+}
+.sat-metric {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+}
+.sat-helper {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 0.86rem;
 }
 .sat-img-placeholder, .sat-img-empty {
   padding: 40px 12px;
@@ -610,12 +736,28 @@ summary {
   align-items: center;
   justify-content: center;
 }
+.sat-overlay-note {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 10px;
+  z-index: 3;
+  padding: 8px 10px;
+  border-radius: 10px;
+  font-size: 0.8rem;
+  background: rgba(15, 23, 42, 0.74);
+  color: #fff;
+  backdrop-filter: blur(4px);
+}
+.sat-overlay-note-muted {
+  background: rgba(82, 96, 109, 0.82);
+}
 .sat-date {
-  padding: 8px;
+  padding: 0;
   font-weight: 700;
   font-size: 0.88rem;
-  margin: 0;
-  border-top: 1px solid var(--border-light);
+  margin: 0 0 6px;
+  border-top: 0;
 }
 .sat-legend {
   display: grid;
@@ -643,17 +785,92 @@ summary {
   align-items: center;
   gap: 8px;
 }
+.sat-summary {
+  margin-top: 8px;
+}
+.sat-analysis-card {
+  margin: 12px 0 16px;
+}
+.sat-analysis-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 12px;
+  margin: 16px 0;
+}
+.sat-analysis-metric {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px;
+  background: var(--surface-hover);
+}
+.sat-analysis-metric-success {
+  border-color: rgba(15, 123, 62, 0.22);
+  background: rgba(15, 123, 62, 0.06);
+}
+.sat-analysis-metric-warning {
+  border-color: rgba(161, 92, 0, 0.24);
+  background: rgba(161, 92, 0, 0.08);
+}
+.sat-analysis-value {
+  margin: 0;
+  font-size: 1.2rem;
+  font-weight: 800;
+}
+.sat-analysis-label {
+  margin: 2px 0 8px;
+  color: var(--muted);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.sat-analysis-title {
+  margin: 0;
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+.sat-analysis-detail {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+.sat-analysis-copy {
+  margin-bottom: 12px;
+}
+.sat-analysis-columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+}
+.sat-analysis-list {
+  margin: 8px 0 0;
+  padding-left: 18px;
+}
+.sat-analysis-list li {
+  margin-bottom: 8px;
+  line-height: 1.45;
+}
 .sat-trend-label {
-  min-width: 50px;
+  min-width: 64px;
   font-size: 0.82rem;
   color: var(--muted);
   text-align: right;
 }
 .sat-trend-value {
-  min-width: 40px;
+  min-width: 92px;
   font-size: 0.82rem;
   font-weight: 700;
   text-align: right;
+}
+.sat-delta {
+  font-weight: 600;
+  font-size: 0.76rem;
+}
+.sat-delta-up {
+  color: var(--success);
+}
+.sat-delta-down {
+  color: var(--warning);
 }
 
 /* === Responsive === */
