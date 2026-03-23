@@ -316,6 +316,21 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
   border-bottom: 1px solid var(--border-light);
 }
 .stat:last-child { border-bottom: 0; }
+.stat-list-left .stat {
+  display: grid;
+  grid-template-columns: minmax(110px, 150px) 1fr;
+  justify-content: flex-start;
+  align-items: start;
+}
+.stat-label {
+  font-weight: 600;
+}
+.stat-value {
+  min-width: 0;
+  text-align: left;
+  line-height: 1.5;
+  word-break: break-word;
+}
 
 /* === Badges === */
 .badge {
@@ -357,6 +372,9 @@ legend {
   display: grid;
   gap: 6px;
 }
+.form-row-wide {
+  grid-column: 1 / -1;
+}
 label {
   font-weight: 600;
   color: var(--text);
@@ -392,6 +410,12 @@ textarea {
   width: auto;
   min-height: 0;
   margin-top: 2px;
+}
+.location-lookup-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
 }
 
 /* === Secret fields (locked/edit toggle) === */
@@ -507,6 +531,35 @@ summary {
 }
 .settings-extra[open] > summary {
   margin-bottom: var(--space-3);
+}
+
+.next-steps-list {
+  display: grid;
+}
+.next-step-row {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  gap: var(--space-3);
+  align-items: start;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border-light);
+  cursor: pointer;
+}
+.next-step-row:last-child {
+  border-bottom: 0;
+}
+.next-step-row input {
+  width: auto;
+  min-height: 0;
+  margin-top: 2px;
+}
+.next-step-number {
+  font-weight: 700;
+  min-width: 20px;
+}
+.next-step-text {
+  min-width: 0;
+  line-height: 1.5;
 }
 
 /* Card footnote */
@@ -649,6 +702,29 @@ summary {
   border-radius: var(--space-2);
   padding: 2px 6px;
   font-size: 0.9em;
+}
+
+.chart-card-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+.chart-card-header h2 {
+  margin: 0;
+}
+.chart-control {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+.chart-control select {
+  width: auto;
+  min-width: 132px;
 }
 
 /* === Advisor === */
@@ -986,6 +1062,9 @@ summary {
   .form-grid {
     grid-template-columns: 1fr;
   }
+  .location-lookup-actions {
+    align-items: stretch;
+  }
   .grid-2 {
     grid-template-columns: 1fr;
   }
@@ -1004,6 +1083,31 @@ summary {
   }
   .stat {
     font-size: var(--text-sm);
+  }
+  .stat-list-left .stat {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+  .next-step-row {
+    grid-template-columns: auto 1fr;
+  }
+  .next-step-row input {
+    grid-row: 1 / span 2;
+  }
+  .next-step-number {
+    grid-column: 2;
+  }
+  .next-step-text {
+    grid-column: 2;
+  }
+  .chart-card-header {
+    align-items: stretch;
+  }
+  .chart-control {
+    justify-content: space-between;
+  }
+  .chart-control select {
+    width: 100%;
   }
   .card {
     padding: var(--space-4);

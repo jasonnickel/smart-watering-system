@@ -29,6 +29,7 @@ describe('Guided settings editor', () => {
       ambientMacAddress: '',
       notificationEmail: 'yard@example.com',
       webhookUrl: '',
+      locationAddress: '123 Main St, Golden, CO 80401',
       mqttBrokerUrl: '',
       mqttTopicPrefix: 'taproot',
       debugLevel: '2',
@@ -47,6 +48,7 @@ describe('Guided settings editor', () => {
     assert.match(updated, /^WEB_UI_PASSWORD=secret$/m);
     assert.doesNotMatch(updated, /^N8N_WEBHOOK_URL=/m);
     assert.equal(model.notificationEmail, 'yard@example.com');
+    assert.equal(model.locationAddress, '123 Main St, Golden, CO 80401');
     assert.equal(model.debugLevel, '2');
     assert.equal(model.shadowMode, false);
     assert.equal(model.lat, '40.015');
@@ -64,6 +66,7 @@ describe('Guided settings editor', () => {
       ambientMacAddress: '',
       notificationEmail: '',
       webhookUrl: '',
+      locationAddress: '',
       mqttBrokerUrl: '',
       mqttTopicPrefix: '',
       debugLevel: '1',

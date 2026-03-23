@@ -53,28 +53,46 @@ export function getMoistureHistory(days = 14) {
   };
 }
 
+function renderRangeOptions(selectedDays) {
+  return [7, 14, 30, 60, 90]
+    .map(days => `<option value="${days}"${days === selectedDays ? ' selected' : ''}>Last ${days} days</option>`)
+    .join('');
+}
+
+function renderChartHeader(title, selectId, selectedDays) {
+  return `<div class="chart-card-header">
+    <h2>${title}</h2>
+    <label class="chart-control" for="${selectId}">
+      <span>Range</span>
+      <select id="${selectId}">
+        ${renderRangeOptions(selectedDays)}
+      </select>
+    </label>
+  </div>`;
+}
+
 /**
  * Render the charts page HTML.
  */
 export function chartsPageContent() {
   return `
     <div class="card">
-      <h2>Water Usage (Last 14 Days)</h2>
+      ${renderChartHeader('Water Usage', 'usage-days', 14)}
       <canvas id="usageChart" height="200"></canvas>
     </div>
 
     <div class="card">
-      <h2>Daily Cost (Last 14 Days)</h2>
+      ${renderChartHeader('Daily Cost', 'cost-days', 14)}
       <canvas id="costChart" height="200"></canvas>
     </div>
 
     <div class="card">
-      <h2>Decisions (Last 14 Days)</h2>
+      ${renderChartHeader('Decisions', 'decision-days', 14)}
       <canvas id="decisionChart" height="150"></canvas>
     </div>
 
     <div class="card">
-      <h2>Precipitation: Station vs Forecast (Last 7 Days)</h2>
+      ${renderChartHeader('Precipitation: Station vs Forecast', 'precip-days', 7)}
       <canvas id="precipChart" height="200"></canvas>
     </div>
 
@@ -85,114 +103,214 @@ export function chartsPageContent() {
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
     <script>
-      fetch('/api/charts')
-        .then(r => r.json())
-        .then(data => {
-          const colors = {
-            blue: 'rgba(11, 95, 255, 0.7)',
-            green: 'rgba(15, 123, 62, 0.7)',
-            orange: 'rgba(161, 92, 0, 0.7)',
-            red: 'rgba(180, 35, 24, 0.7)',
-            lightBlue: 'rgba(11, 95, 255, 0.15)',
-            lightGreen: 'rgba(15, 123, 62, 0.15)',
-          };
+      const colors = {
+        blue: 'rgba(11, 95, 255, 0.7)',
+        green: 'rgba(15, 123, 62, 0.7)',
+        orange: 'rgba(161, 92, 0, 0.7)',
+        red: 'rgba(180, 35, 24, 0.7)',
+        lightGreen: 'rgba(15, 123, 62, 0.15)',
+      };
+      const chartCache = new Map();
+      const chartInstances = {};
 
-          // Usage chart
-          if (data.dailyUsage.length > 0) {
-            new Chart(document.getElementById('usageChart'), {
-              type: 'bar',
-              data: {
-                labels: data.dailyUsage.map(d => d.date.slice(5)),
-                datasets: [{
-                  label: 'Gallons',
-                  data: data.dailyUsage.map(d => d.gallons),
-                  backgroundColor: colors.blue,
-                  borderRadius: 4,
-                }]
-              },
-              options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
-            });
-          }
-
-          // Cost chart
-          if (data.dailyUsage.length > 0) {
-            new Chart(document.getElementById('costChart'), {
-              type: 'line',
-              data: {
-                labels: data.dailyUsage.map(d => d.date.slice(5)),
-                datasets: [{
-                  label: 'Cost ($)',
-                  data: data.dailyUsage.map(d => d.cost),
-                  borderColor: colors.green,
-                  backgroundColor: colors.lightGreen,
-                  fill: true,
-                  tension: 0.3,
-                }]
-              },
-              options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
-            });
-          }
-
-          // Decision chart
-          if (data.decisions.length > 0) {
-            const dateCounts = {};
-            for (const d of data.decisions) {
-              const key = d.date;
-              if (!dateCounts[key]) dateCounts[key] = { water: 0, skip: 0 };
-              dateCounts[key][d.decision === 'WATER' ? 'water' : 'skip']++;
-            }
-            const dates = Object.keys(dateCounts).sort();
-            new Chart(document.getElementById('decisionChart'), {
-              type: 'bar',
-              data: {
-                labels: dates.map(d => d.slice(5)),
-                datasets: [
-                  { label: 'Water', data: dates.map(d => dateCounts[d].water), backgroundColor: colors.blue, borderRadius: 4 },
-                  { label: 'Skip', data: dates.map(d => dateCounts[d].skip), backgroundColor: colors.orange, borderRadius: 4 },
-                ]
-              },
-              options: { responsive: true, scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true } } }
-            });
-          }
-
-          // Precipitation comparison
-          if (data.precipAudits.length > 0) {
-            new Chart(document.getElementById('precipChart'), {
-              type: 'bar',
-              data: {
-                labels: data.precipAudits.map(d => d.date.slice(5)),
-                datasets: [
-                  { label: 'Your Station', data: data.precipAudits.map(d => d.ambient_inches), backgroundColor: colors.blue, borderRadius: 4 },
-                  { label: 'OpenMeteo', data: data.precipAudits.map(d => d.openmeteo_inches), backgroundColor: colors.orange, borderRadius: 4 },
-                ]
-              },
-              options: { responsive: true, scales: { y: { beginAtZero: true, title: { display: true, text: 'Inches' } } } }
-            });
-          }
-
-          // Moisture bar chart
-          if (data.moisture.length > 0) {
-            new Chart(document.getElementById('moistureChart'), {
-              type: 'bar',
-              data: {
-                labels: data.moisture.map(z => 'Zone ' + z.zone),
-                datasets: [{
-                  label: 'Moisture %',
-                  data: data.moisture.map(z => z.pct),
-                  backgroundColor: data.moisture.map(z =>
-                    z.pct < 40 ? colors.red : z.pct < 60 ? colors.orange : colors.green
-                  ),
-                  borderRadius: 4,
-                }]
-              },
-              options: {
-                indexAxis: 'y',
-                responsive: true,
-                plugins: { legend: { display: false } },
-                scales: { x: { beginAtZero: true, max: 100, title: { display: true, text: '%' } } }
+      async function fetchChartData(days) {
+        const cacheKey = String(days);
+        if (!chartCache.has(cacheKey)) {
+          chartCache.set(cacheKey, fetch('/api/charts?days=' + encodeURIComponent(days))
+            .then(response => {
+              if (!response.ok) {
+                throw new Error('Chart data request failed with status ' + response.status);
               }
-            });
-          }
+              return response.json();
+            }));
+        }
+        return chartCache.get(cacheKey);
+      }
+
+      function destroyChart(key) {
+        if (chartInstances[key]) {
+          chartInstances[key].destroy();
+          delete chartInstances[key];
+        }
+      }
+
+      function renderUsageChart(data) {
+        destroyChart('usage');
+        if (data.dailyUsage.length === 0) return;
+
+        chartInstances.usage = new Chart(document.getElementById('usageChart'), {
+          type: 'bar',
+          data: {
+            labels: data.dailyUsage.map(day => day.date.slice(5)),
+            datasets: [{
+              label: 'Gallons',
+              data: data.dailyUsage.map(day => day.gallons),
+              backgroundColor: colors.blue,
+              borderRadius: 4,
+            }],
+          },
+          options: {
+            responsive: true,
+            plugins: { legend: { display: false } },
+            scales: { y: { beginAtZero: true } },
+          },
+        });
+      }
+
+      function renderCostChart(data) {
+        destroyChart('cost');
+        if (data.dailyUsage.length === 0) return;
+
+        chartInstances.cost = new Chart(document.getElementById('costChart'), {
+          type: 'line',
+          data: {
+            labels: data.dailyUsage.map(day => day.date.slice(5)),
+            datasets: [{
+              label: 'Cost ($)',
+              data: data.dailyUsage.map(day => day.cost),
+              borderColor: colors.green,
+              backgroundColor: colors.lightGreen,
+              fill: true,
+              tension: 0.3,
+            }],
+          },
+          options: {
+            responsive: true,
+            plugins: { legend: { display: false } },
+            scales: { y: { beginAtZero: true } },
+          },
+        });
+      }
+
+      function renderDecisionChart(data) {
+        destroyChart('decision');
+        if (data.decisions.length === 0) return;
+
+        const dateCounts = {};
+        for (const decision of data.decisions) {
+          const key = decision.date;
+          if (!dateCounts[key]) dateCounts[key] = { water: 0, skip: 0 };
+          dateCounts[key][decision.decision === 'WATER' ? 'water' : 'skip']++;
+        }
+
+        const dates = Object.keys(dateCounts).sort();
+        chartInstances.decision = new Chart(document.getElementById('decisionChart'), {
+          type: 'bar',
+          data: {
+            labels: dates.map(date => date.slice(5)),
+            datasets: [
+              { label: 'Water', data: dates.map(date => dateCounts[date].water), backgroundColor: colors.blue, borderRadius: 4 },
+              { label: 'Skip', data: dates.map(date => dateCounts[date].skip), backgroundColor: colors.orange, borderRadius: 4 },
+            ],
+          },
+          options: {
+            responsive: true,
+            scales: {
+              x: { stacked: true },
+              y: { stacked: true, beginAtZero: true },
+            },
+          },
+        });
+      }
+
+      function renderPrecipChart(data) {
+        destroyChart('precip');
+        if (data.precipAudits.length === 0) return;
+
+        const audits = [...data.precipAudits].reverse();
+        chartInstances.precip = new Chart(document.getElementById('precipChart'), {
+          type: 'bar',
+          data: {
+            labels: audits.map(day => day.date.slice(5)),
+            datasets: [
+              { label: 'Your Station', data: audits.map(day => day.ambient_inches), backgroundColor: colors.blue, borderRadius: 4 },
+              { label: 'OpenMeteo', data: audits.map(day => day.openmeteo_inches), backgroundColor: colors.orange, borderRadius: 4 },
+            ],
+          },
+          options: {
+            responsive: true,
+            scales: {
+              y: {
+                beginAtZero: true,
+                title: { display: true, text: 'Inches' },
+              },
+            },
+          },
+        });
+      }
+
+      function renderMoistureChart(data) {
+        destroyChart('moisture');
+        if (data.moisture.length === 0) return;
+
+        chartInstances.moisture = new Chart(document.getElementById('moistureChart'), {
+          type: 'bar',
+          data: {
+            labels: data.moisture.map(zone => 'Zone ' + zone.zone),
+            datasets: [{
+              label: 'Moisture %',
+              data: data.moisture.map(zone => zone.pct),
+              backgroundColor: data.moisture.map(zone =>
+                zone.pct < 40 ? colors.red : zone.pct < 60 ? colors.orange : colors.green
+              ),
+              borderRadius: 4,
+            }],
+          },
+          options: {
+            indexAxis: 'y',
+            responsive: true,
+            plugins: { legend: { display: false } },
+            scales: {
+              x: {
+                beginAtZero: true,
+                max: 100,
+                title: { display: true, text: '%' },
+              },
+            },
+          },
+        });
+      }
+
+      async function refreshRangeChart(kind, days) {
+        const data = await fetchChartData(days);
+        switch (kind) {
+          case 'usage':
+            renderUsageChart(data);
+            break;
+          case 'cost':
+            renderCostChart(data);
+            break;
+          case 'decision':
+            renderDecisionChart(data);
+            break;
+          case 'precip':
+            renderPrecipChart(data);
+            break;
+          default:
+            break;
+        }
+      }
+
+      document.getElementById('usage-days').addEventListener('change', event => {
+        refreshRangeChart('usage', Number(event.target.value)).catch(err => console.error('Usage chart load failed:', err));
+      });
+      document.getElementById('cost-days').addEventListener('change', event => {
+        refreshRangeChart('cost', Number(event.target.value)).catch(err => console.error('Cost chart load failed:', err));
+      });
+      document.getElementById('decision-days').addEventListener('change', event => {
+        refreshRangeChart('decision', Number(event.target.value)).catch(err => console.error('Decision chart load failed:', err));
+      });
+      document.getElementById('precip-days').addEventListener('change', event => {
+        refreshRangeChart('precip', Number(event.target.value)).catch(err => console.error('Precipitation chart load failed:', err));
+      });
+
+      Promise.all([fetchChartData(14), fetchChartData(7)])
+        .then(([defaultData, precipData]) => {
+          renderUsageChart(defaultData);
+          renderCostChart(defaultData);
+          renderDecisionChart(defaultData);
+          renderPrecipChart(precipData);
+          renderMoistureChart(defaultData);
         })
         .catch(err => console.error('Chart data load failed:', err));
     </script>

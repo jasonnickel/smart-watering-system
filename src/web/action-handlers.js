@@ -8,13 +8,16 @@ import yaml from 'js-yaml';
 
 import {
   readEnvFile, readShadowMode, writeEnvValue,
+  syncManagedEnvFromContent,
 } from '../env.js';
+import { reloadConfigFromEnv } from '../config.js';
 import {
   applyGuidedSettings,
   buildZoneConfigYaml,
   normalizeSoilProfiles,
   normalizeZones,
 } from './forms.js';
+import { setSystemState } from '../db/state.js';
 import { log } from '../log.js';
 import {
   authEnabled, createSession, clearSession,
@@ -25,6 +28,9 @@ import {
 import { redirect } from './http.js';
 
 // -- Helpers -----------------------------------------------------------------
+
+const NEXT_STEP_STATE_KEY = 'settings_next_steps';
+const NEXT_STEP_FIELDS = ['review_zones', 'run_doctor', 'shadow_reviewed'];
 
 function getClientIP(req) {
   return req.socket?.remoteAddress || 'unknown';
@@ -42,6 +48,12 @@ function runCliInBackground(args, logLabel, appRoot) {
   });
 }
 
+function applyRuntimeEnvContent(envContent, syncWebUiAuth) {
+  syncManagedEnvFromContent(envContent);
+  reloadConfigFromEnv();
+  syncWebUiAuth(envContent);
+}
+
 // -- Form body readers -------------------------------------------------------
 
 function readGuidedSettingsFromBody(body) {
@@ -54,6 +66,7 @@ function readGuidedSettingsFromBody(body) {
   const webHost = String(body.get('web_host') || '').trim();
   const webhookUrl = String(body.get('webhook_url') || '').trim();
   const notificationEmail = String(body.get('notification_email') || '').trim();
+  const locationAddress = String(body.get('location_address') || '').trim();
 
   const latNumber = parseFloat(lat);
   const lonNumber = parseFloat(lon);
@@ -110,6 +123,7 @@ function readGuidedSettingsFromBody(body) {
     ambientMacAddress: body.get('ambient_mac_address') || '',
     notificationEmail,
     webhookUrl,
+    locationAddress,
     mqttBrokerUrl: body.get('mqtt_broker_url') || '',
     mqttTopicPrefix: body.get('mqtt_topic_prefix') || '',
     debugLevel,
@@ -182,6 +196,7 @@ export function handleWater(_req, res, _body, context) {
 export function handleShadowToggle(_req, res) {
   const nextMode = readShadowMode() ? 'false' : 'true';
   writeEnvValue('SHADOW_MODE', nextMode);
+  reloadConfigFromEnv();
   log(1, `Shadow mode toggled via web UI: now ${nextMode === 'true' ? 'SHADOW' : 'LIVE'}`);
   return redirect(res, `/?msg=${readShadowMode() ? 'shadow-on' : 'live-on'}`);
 }
@@ -205,7 +220,7 @@ export async function handleSettingsGuidedSave(_req, res, body, context) {
     const nextContent = applyGuidedSettings(readEnvFile(), values);
     await mkdir(dirname(context.envPath), { recursive: true });
     await writeFile(context.envPath, nextContent, { mode: 0o600 });
-    context.syncWebUiAuth(nextContent);
+    applyRuntimeEnvContent(nextContent, context.syncWebUiAuth);
     log(1, 'Guided settings updated via web UI');
     return redirect(res, '/settings?msg=settings-saved');
   } catch (err) {
@@ -214,11 +229,20 @@ export async function handleSettingsGuidedSave(_req, res, body, context) {
   }
 }
 
+export function handleSettingsNextSteps(_req, res, body) {
+  const progress = Object.fromEntries(
+    NEXT_STEP_FIELDS.map(field => [field, body.get(field) === 'on'])
+  );
+  setSystemState(NEXT_STEP_STATE_KEY, JSON.stringify(progress));
+  log(1, 'Next steps checklist updated via web UI');
+  return redirect(res, '/settings?msg=next-steps-saved');
+}
+
 export async function handleSettingsRawSave(_req, res, body, context) {
   const envContent = body.get('env') || '';
   await mkdir(dirname(context.envPath), { recursive: true });
   await writeFile(context.envPath, envContent, { mode: 0o600 });
-  context.syncWebUiAuth(envContent);
+  applyRuntimeEnvContent(envContent, context.syncWebUiAuth);
   log(1, 'Environment config updated via raw web UI');
   return redirect(res, '/settings?msg=settings-saved&advanced=1');
 }

@@ -1,7 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { readEnvValueFromContent, upsertEnvValue } from '../../src/env.js';
+import { readEnvValueFromContent, syncManagedEnvFromContent, upsertEnvValue } from '../../src/env.js';
+import CONFIG, { reloadConfigFromEnv } from '../../src/config.js';
 
 describe('Environment file helpers', () => {
   it('replaces an existing key without disturbing other lines', () => {
@@ -46,5 +47,44 @@ describe('Config location overrides', () => {
     assert.equal(location.lat, 40.015);
     assert.equal(location.lon, -105.2705);
     assert.equal(location.timezone, 'America/Chicago');
+  });
+});
+
+describe('Runtime env reload', () => {
+  it('updates process.env and CONFIG after settings are saved', () => {
+    const original = {
+      RACHIO_API_KEY: process.env.RACHIO_API_KEY,
+      LAT: process.env.LAT,
+      LON: process.env.LON,
+      LOCATION_TIMEZONE: process.env.LOCATION_TIMEZONE,
+      LOCATION_ADDRESS: process.env.LOCATION_ADDRESS,
+    };
+
+    try {
+      syncManagedEnvFromContent([
+        'RACHIO_API_KEY=test-key',
+        'LAT=40.015',
+        'LON=-105.2705',
+        'LOCATION_TIMEZONE=America/Chicago',
+        'LOCATION_ADDRESS=123 Main St, Golden, CO 80401',
+      ].join('\n'));
+      reloadConfigFromEnv();
+
+      assert.equal(process.env.RACHIO_API_KEY, 'test-key');
+      assert.equal(CONFIG.api.rachio.apiKey, 'test-key');
+      assert.equal(CONFIG.location.lat, 40.015);
+      assert.equal(CONFIG.location.lon, -105.2705);
+      assert.equal(CONFIG.location.timezone, 'America/Chicago');
+      assert.equal(CONFIG.location.address, '123 Main St, Golden, CO 80401');
+    } finally {
+      for (const [key, value] of Object.entries(original)) {
+        if (value == null) {
+          delete process.env[key];
+        } else {
+          process.env[key] = value;
+        }
+      }
+      reloadConfigFromEnv();
+    }
   });
 });
