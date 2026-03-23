@@ -86,20 +86,23 @@ export async function getDailyET(options = {}) {
     }
 
     const data = await response.json();
-    if (!Array.isArray(data)) return [];
 
-    const records = data.map(day => ({
-      date: day.date,
-      referenceETr: parseSafe(day.etrASCE),
-      referenceETo: parseSafe(day.etoASCE),
-      tempMax: parseSafe(day.tMax),
-      tempMin: parseSafe(day.tMin),
-      tempAvg: parseSafe(day.tAvg),
-      humidityMax: parseSafe(day.rhMax),
-      humidityMin: parseSafe(day.rhMin),
-      solarRadiation: parseSafe(day.solarRad),
-      windSpeed: parseSafe(day.windSpeed),
-      precipitation: parseSafe(day.precip),
+    // CoAgMet returns parallel arrays: { time: [...], etoASCE: [...], tMax: [...], ... }
+    const times = data.time || data.date || [];
+    if (times.length === 0) return [];
+
+    const records = times.map((date, i) => ({
+      date,
+      referenceETr: parseSafe(data.etrASCE?.[i]),
+      referenceETo: parseSafe(data.etoASCE?.[i]),
+      tempMax: parseSafe(data.tMax?.[i]),
+      tempMin: parseSafe(data.tMin?.[i]),
+      tempAvg: parseSafe(data.tAvg?.[i]),
+      humidityMax: parseSafe(data.rhMax?.[i]),
+      humidityMin: parseSafe(data.rhMin?.[i]),
+      solarRadiation: parseSafe(data.solarRad?.[i]),
+      windSpeed: parseSafe(data.windSpeed?.[i]),
+      precipitation: parseSafe(data.precip?.[i]),
     })).filter(r => r.referenceETo !== null);
 
     // Persist to database for historical analysis
