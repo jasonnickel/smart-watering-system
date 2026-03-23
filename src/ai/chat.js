@@ -6,9 +6,53 @@ import { localDateStr } from '../time.js';
 import {
   getStatus, getRunsSince, getFinanceData, getDailyUsage,
   getSoilMoisture, getCachedWeather, getRecentDiscrepancies,
+  getWeatherHistory, getRecentReferenceET, getNDVIHistory,
 } from '../db/state.js';
 import { collectAdvisorInsights } from './advisor.js';
 import { callAdvisorModel } from './advisor.js';
+
+function buildHistorySummary() {
+  const lines = [];
+
+  // Last 30 days weather summary
+  try {
+    const weather = getWeatherHistory(30, 'openmeteo');
+    if (weather.length > 0) {
+      const temps = weather.filter(w => w.temp_max != null);
+      const rain = weather.filter(w => w.precipitation != null);
+      if (temps.length > 0) {
+        const avgHigh = temps.reduce((s, w) => s + w.temp_max, 0) / temps.length;
+        const avgLow = temps.reduce((s, w) => s + w.temp_min, 0) / temps.length;
+        lines.push(`WEATHER 30D: avg high ${avgHigh.toFixed(0)}F, avg low ${avgLow.toFixed(0)}F`);
+      }
+      if (rain.length > 0) {
+        const totalRain = rain.reduce((s, w) => s + (w.precipitation || 0), 0);
+        const rainyDays = rain.filter(w => w.precipitation > 0.01).length;
+        lines.push(`RAIN 30D: ${totalRain.toFixed(2)}" total, ${rainyDays} rainy days`);
+      }
+    }
+  } catch { /* DB may not have history yet */ }
+
+  // Reference ET comparison
+  try {
+    const etData = getRecentReferenceET(7);
+    if (etData.length > 0) {
+      const avgETo = etData.reduce((s, e) => s + (e.reference_eto || 0), 0) / etData.length;
+      lines.push(`REF ET 7D: avg ${avgETo.toFixed(3)}" grass ETo/day (CoAgMet)`);
+    }
+  } catch { /* empty */ }
+
+  // NDVI latest
+  try {
+    const ndvi = getNDVIHistory(90);
+    if (ndvi.length > 0) {
+      const latest = ndvi[0];
+      lines.push(`NDVI: ${latest.ndvi_mean?.toFixed(2) || '?'} (${latest.period_from?.slice(0, 10) || '?'})`);
+    }
+  } catch { /* empty */ }
+
+  return lines.length > 0 ? lines.join('\n') : '';
+}
 
 function buildCompactContext() {
   const todayStr = localDateStr();
@@ -76,7 +120,8 @@ LAST DECISION: ${lastRun ? `${lastRun.decision} - ${lastRun.reason} (${lastRun.t
 USAGE: Today ${todayUsage?.gallons?.toFixed(0) || 0} gal/$${todayUsage?.cost?.toFixed(2) || '0.00'} | Month ${finance?.monthly_gallons?.toFixed(0) || 0} gal/$${finance?.monthly_cost?.toFixed(2) || '0.00'} | Cycle ${finance?.cumulative_gallons?.toFixed(0) || 0} gal
 DISCREPANCIES: ${discrepancies.length} in last 48h
 INSIGHTS: ${insightLines}
-DATA SOURCES: Ambient Weather (live), OpenMeteo (forecast/archive), USDA soil survey (soil properties), CoAgMet (reference ET cross-validation), Sentinel-2 NDVI (vegetation health satellite imagery)`;
+${buildHistorySummary()}
+DATA SOURCES: Ambient Weather (live), OpenMeteo (forecast/archive + 2yr history), USDA soil survey, CoAgMet reference ET, Sentinel-2 NDVI satellite`;
 }
 
 export async function askYard(question) {
