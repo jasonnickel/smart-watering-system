@@ -130,7 +130,7 @@ export function applyGuidedSettings(envContent, values) {
 export function parseZoneConfig(rawYaml, fallback = {}) {
   let parsed = null;
   if (trimValue(rawYaml)) {
-    parsed = yaml.load(rawYaml);
+    parsed = yaml.load(rawYaml, { schema: yaml.JSON_SCHEMA });
   }
 
   const fallbackDoc = fallbackZoneDocument(fallback);
