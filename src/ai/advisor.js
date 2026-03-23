@@ -3,10 +3,13 @@
 
 import {
   getFlowCalibrationSuggestions,
+  getNDVIHistory,
   getRecentDiscrepancies,
   getRecentPrecipitationAudits,
 } from '../db/state.js';
-import { analyzeETDrift, analyzeSoilConfig, analyzeNDVITrend } from '../core/data-integration.js';
+import CONFIG from '../config.js';
+import { analyzeETDrift, analyzeSoilConfig } from '../core/data-integration.js';
+import { buildVegetationAdvisorInsight } from './satellite.js';
 
 function toNumber(value) {
   const parsed = Number(value);
@@ -104,8 +107,9 @@ export function collectAdvisorInsights(options = {}) {
   const soilMismatch = analyzeSoilConfig();
   if (soilMismatch) insights.push(soilMismatch);
 
-  const ndviTrend = analyzeNDVITrend();
-  if (ndviTrend) insights.push(ndviTrend);
+  const ndviHistory = getNDVIHistory(400, CONFIG.location.lat, CONFIG.location.lon);
+  const vegetationTrend = buildVegetationAdvisorInsight(ndviHistory);
+  if (vegetationTrend) insights.push(vegetationTrend);
 
   return insights
     .sort((left, right) => severityRank(left.severity) - severityRank(right.severity))
