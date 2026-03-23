@@ -16,6 +16,7 @@ import {
   getStatus, getRunsSince, getFinanceData, getCachedWeather,
 } from '../db/state.js';
 import { collectAdvisorInsights, aiNarrationEnabled } from '../ai/advisor.js';
+import { ndviEnabled } from '../api/ndvi.js';
 import { authEnabled, safeNextPath } from './auth.js';
 import {
   layout, noticeBanner, escapeHtml, badge, button,
@@ -717,4 +718,47 @@ export function briefingPage(csrf) {
     </div>
     ${csrfField(csrf)}
   `, 'briefing', { authEnabled: authEnabled(), csrf });
+}
+
+export function satellitePage(csrf) {
+  const enabled = ndviEnabled();
+  return layout('Satellite', `
+    <div class="card" id="satellite-app">
+      <h2>Satellite Vegetation Health</h2>
+      <p class="helper">Sentinel-2 satellite imagery showing your yard's vegetation health over time. Green areas are healthy; yellow/brown areas are stressed or bare. Images are at 10-meter resolution, updated every 5 days.</p>
+
+      ${enabled ? `
+      <div class="sat-controls">
+        <div class="form-row">
+          <label for="sat-view">Compare</label>
+          <select id="sat-view">
+            <option value="week">Week to Week (12 weeks)</option>
+            <option value="month" selected>Month to Month (12 months)</option>
+            <option value="year">Year to Year (2 years quarterly)</option>
+          </select>
+        </div>
+        <button id="sat-load" class="btn btn-primary" type="button">Load Satellite Images</button>
+      </div>
+      <p id="sat-status" class="small"></p>
+      <div id="sat-chart"></div>
+      <div id="sat-gallery" class="sat-gallery"></div>
+
+      <div class="card" style="margin-top:16px">
+        <h3>Reading the Images</h3>
+        <div class="sat-legend">
+          <div class="sat-legend-item"><span class="sat-swatch" style="background:#1a991a"></span> Dark green - dense healthy vegetation</div>
+          <div class="sat-legend-item"><span class="sat-swatch" style="background:#80cc33"></span> Light green - moderate vegetation</div>
+          <div class="sat-legend-item"><span class="sat-swatch" style="background:#ccb333"></span> Yellow - sparse or stressed vegetation</div>
+          <div class="sat-legend-item"><span class="sat-swatch" style="background:#996633"></span> Brown - bare soil or dormant turf</div>
+          <div class="sat-legend-item"><span class="sat-swatch" style="background:#cccccc"></span> Grey - cloud cover (no data)</div>
+        </div>
+      </div>
+      ` : `
+      <div class="notice notice-warning card">
+        <p>Satellite imagery requires a free Copernicus Data Space account.</p>
+        <p class="helper">Sign up at dataspace.copernicus.eu and add <span class="inline-code">COPERNICUS_EMAIL</span> and <span class="inline-code">COPERNICUS_PASSWORD</span> to your env file.</p>
+      </div>
+      `}
+    </div>
+  `, 'satellite', { authEnabled: authEnabled(), csrf });
 }
