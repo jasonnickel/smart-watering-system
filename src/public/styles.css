@@ -505,8 +505,8 @@ summary {
 }
 .chat-input-row {
   display: flex;
-  gap: 8px;
-  align-items: stretch;
+  gap: 12px;
+  align-items: center;
 }
 .chat-input-row input {
   flex: 1;
@@ -514,6 +514,7 @@ summary {
 }
 .chat-input-row .btn {
   flex-shrink: 0;
+  white-space: nowrap;
 }
 .chat-output {
   min-height: 0;
