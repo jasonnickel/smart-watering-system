@@ -1,8 +1,8 @@
 # Smart Water System
 
-Standalone irrigation controller that takes over scheduling for a Rachio sprinkler system using your weather station data plus forecast/archive weather APIs, ET-based soil moisture modeling, and multi-day forecasting. Gives you full control over the decision logic that Rachio keeps behind its app.
+Standalone irrigation controller that takes over scheduling for a Rachio sprinkler system using your weather station data plus forecast/archive weather APIs, ET-based soil moisture modeling, multi-day forecasting, and AI-powered insights via Kimi K2 Thinking. Gives you full control over the decision logic that Rachio keeps behind its app.
 
-This repo is a working homelab-oriented controller, not a polished SaaS product. The core decision engine, weather fallback logic, status page, MQTT publishing, watchdog, and summary job are implemented. A few ideas in the codebase are still groundwork rather than finished features, and those are called out explicitly below.
+This repo is a working homelab-oriented controller with a full-featured web UI, AI chat interface, adaptive tuning, and multi-period trend analysis. The core decision engine is fully deterministic - the AI layer is advisory only and never changes watering decisions.
 
 ## How It Works
 
@@ -44,7 +44,7 @@ Every hour, the system checks whether your lawn needs water by running a five-st
 1. **Safety** - Skip if wind is too high, it rained recently, or temperatures are below the configured floor
 2. **Forecast** - Skip if forecast rainfall exceeds the configured threshold
 3. **Soil moisture** - Calculate per-zone water deficit using evapotranspiration (ET) modeling driven by archived, forecast, and live weather inputs
-4. **Budget** - Enforce daily gallon and cost limits based on your tiered water rates
+4. **Budget** - Enforce daily gallon and cost limits based on your utility's tiered water rates
 5. **Scheduling** - Build an optimized run with smart soak cycles for clay soil infiltration
 
 If watering is needed, a final real-time rain check confirms it's not actively raining right now. Then the system sends the command to Rachio, verifies it was accepted, and updates all state. If not, it logs the skip reason and moves on.
@@ -61,13 +61,17 @@ Several open-source projects tackle ET-based irrigation. Here's how they differ:
 | **Weather fallback chain** | Yes | No | No | No |
 | **Weather cross-validation** | Yes | No | No | No |
 | **Real-time rain abort** | Yes | No | No | No |
+| **AI-powered insights** | Yes (Kimi K2) | No | No | No |
+| **Natural language chat** | Yes | No | No | No |
+| **Adaptive zone tuning** | Yes | No | No | No |
 | **ET method** | Hargreaves | FAO-56 PyETo | Penman-Monteith | ETo % scaling |
 | **Per-zone soil moisture budget** | Yes | Yes | No | No |
 | **Smart soak cycles** | Yes | No | No | No |
 | **Cost / budget tracking** | Yes | No | No | No |
+| **Dark mode** | Yes | N/A | N/A | No |
 | **MQTT / HA integration** | Optional | Native | Native | No |
 | **Daily summary email** | Yes | No | No | No |
-| **Stars** | New | 475 | 86 | 66 |
+| **Weekly intelligence briefing** | Yes | No | No | No |
 
 HAsmartirrigation is the most mature project in this space and a great option if you already run Home Assistant. This project targets the gap for Rachio owners who want a standalone, inspectable decision engine without a platform dependency - and specifically addresses the documented failure modes below.
 
@@ -91,7 +95,7 @@ This project is aimed at homeowners who want an inspectable, self-hosted decisio
 
 **The Rachio problem:** When a nearby personal weather station goes offline, Rachio silently falls back to more distant stations or interpolated grid data. There is no notification. Users discover weeks later that their "hyperlocal" 36-foot-resolution data was actually coming from a station miles away with different microclimate conditions. The system continues making decisions on degraded data without any indication.
 
-**Our solution:** On each run, the controller checks how old the last Ambient Weather reading is. Once the cache age crosses 4 hours, 12 hours, and 24 hours, it escalates alerts and tells you whether it is falling back to OpenMeteo data or conservative defaults. The daily summary also reports the active weather source and its freshness. If all weather sources are unavailable, the controller falls back to conservative current-condition defaults instead of crashing or silently stopping decisions.
+**Our solution:** On each run, the controller checks how old the last Ambient Weather reading is. Once the cache age crosses 4 hours, 12 hours, and 24 hours, it escalates alerts and tells you whether it is falling back to OpenMeteo data or conservative defaults. When `AI_API_KEY` is configured, watchdog alerts are enriched with context - instead of "Weather station stale" you get a full explanation of what the system is doing about it, current soil moisture, and whether you need to act. The daily summary also reports the active weather source and its freshness.
 
 ### "Flex Daily went 8 days without watering in 100-degree heat"
 
@@ -100,7 +104,7 @@ This project is aimed at homeowners who want an inspectable, self-hosted decisio
 **Our solution:** Three layers of protection:
 - **Emergency cooling** with dynamic temperature triggers that adjust based on solar radiation, humidity, and wind - not just air temperature. When conditions are genuinely dangerous for turf, the system waters regardless of what the daily schedule decided.
 - **Degraded-mode policy** that never skips watering in summer because a data source is unavailable. If your weather station and forecast APIs both go down during a heat wave, conservative defaults ensure watering continues.
-- **Tuning scaffolding** for future model calibration. Today the implemented tuning path is flow-based suggestion logging; ET correction storage exists, but automatic ET drift analysis is not finished yet.
+- **Adaptive zone tuning** that analyzes 14-day rolling watering frequency per zone and compares against predicted frequency based on ET and zone capacity. When a zone consistently waters 30%+ more or less often than expected, the system suggests and eventually auto-applies an ET correction factor (within 0.8x-1.2x bounds). The model gets more accurate over time instead of degrading.
 
 ### "Cycle and Soak activated on some zones but not others"
 
@@ -112,9 +116,11 @@ This project is aimed at homeowners who want an inspectable, self-hosted decisio
 
 **The Rachio problem:** The app shows what happened (watered zone 3 for 25 minutes) but not why. Users can't determine whether a run was triggered by ET deficit, proactive forecast logic, or schedule. When the system skips, the reason shown is often generic ("Saturation Skip") even when the yard is visibly dry.
 
-**Our solution:** Every run is logged across three phases (DECIDE, COMMAND, VERIFY) so you can tell whether the system chose to water, whether the command was sent, and whether Rachio accepted it. The logs include the decision reason, selected zones, gallons, cost totals, success/failure state, and any command error message. You can query it with `node src/cli.js status --json` or browse the SQLite database directly.
+**Our solution:** Every run is logged across three phases (DECIDE, COMMAND, VERIFY) so you can tell whether the system chose to water, whether the command was sent, and whether Rachio accepted it. The logs include the decision reason, selected zones, gallons, cost totals, success/failure state, and any command error message.
 
-The daily summary job gives you the overnight recap without needing to touch a terminal.
+When `AI_API_KEY` is configured, the Run History page adds an "Explain" button on each decision row. Click it and Kimi K2 Thinking generates a 2-4 sentence plain English narrative explaining what happened and why, using your actual system data. Narratives are cached in the database so the same row never costs another API call.
+
+You can also use "Ask Your Yard" on the dashboard - type any question in plain English and get answers grounded in your live soil moisture, weather, forecast, usage, and decision history.
 
 ### "If my internet goes down, I lose all control"
 
@@ -126,7 +132,7 @@ The daily summary job gives you the overnight recap without needing to touch a t
 
 **The Rachio problem:** Flex Daily's accuracy depends heavily on correct precipitation rate calibration for each zone. Most users never do catch cup tests, so the model runs on default values from day one. This is the #1 setup barrier and the primary reason Flex Daily produces absurd schedules (20-hour runs, week-long gaps) for many users.
 
-**Current state in this repo:** The database tables and suggestion logic for flow-based calibration are present, but end-to-end flow audit collection is not wired into the main run loop yet. In other words: this repo lays the groundwork for flow-assisted calibration, but you should treat that part as incomplete rather than production-ready.
+**Current state in this repo:** The database tables and suggestion logic for flow-based calibration are present, but end-to-end flow audit collection requires an EveryDrop flow meter and is not wired into the main run loop yet. The adaptive tuning system compensates by detecting when zones consistently need more or less water than predicted and adjusting ET correction factors automatically.
 
 ## Key Features
 
@@ -134,19 +140,35 @@ The daily summary job gives you the overnight recap without needing to touch a t
 
 **Decision-Command-Verify.** Every watering run is logged in three phases. The decision is recorded before any command is sent. If Rachio rejects the command or doesn't respond, state is not corrupted. The watchdog catches silent failures.
 
-**Daily summary job.** A 6am systemd timer generates an HTML morning report with overnight activity, current soil moisture per zone, today's forecast, weather source status, month-to-date cost, and discrepancy warnings. If `N8N_WEBHOOK_URL` is configured, the report is posted to the `/summary` webhook for delivery.
+**Ask Your Yard.** A natural language chat box on the dashboard powered by Kimi K2 Thinking. Ask questions about your irrigation system in plain English - "Why didn't you water yesterday?", "Which zone is driest?", "How much have I spent this month?" - and get answers grounded in your live data. The thinking model reasons through your soil moisture, weather, forecast, usage, discrepancies, and advisor insights before responding.
 
-**Status page.** A static HTML file regenerated after every run, written to `~/.smart-water/status.html` by default. It includes soil moisture bars, forecast cards, recent decisions, and cost tracking. You can serve that file however you want; no JavaScript framework is required.
+**Decision storytelling.** Each row in Run History has an "Explain" button that generates a plain English narrative. "Skipped at 7:02 AM because your weather station recorded 0.31 inches overnight and the 3-day forecast shows another 0.15 inches tomorrow. All 9 zones are above 65% capacity." Narratives are cached in the database.
 
-<img src="docs/dashboard-preview.png" alt="Smart Water System Dashboard" width="400">
+**Weekly intelligence briefing.** A Sunday morning report with multi-period trend analysis: 7-day, 14-day, 30-day, 90-day, and full season. Week-over-week and month-over-month usage comparison. Year-over-year delta against the same calendar window from last year. Kimi K2 Thinking generates a structured narrative with headline, trends, and actionable recommendations. Available on-demand from the Briefing tab or via the Sunday 7am systemd timer.
 
-**Optional guided web UI.** The local browser UI now supports guided setup, guided zone editing, optional password protection, and safer quick actions, while still keeping the original raw env/YAML editors and CLI workflow available for coders.
+**Advisor insights.** Deterministic analysis (no AI call) shown on the dashboard: forecast confidence warnings when weather sources disagree, rain gauge bias detection when precipitation readings diverge 20%+ over 7 days, and flow calibration alerts when zone meter readings deviate from the model.
 
-**YAML zone config.** Zone profiles live in a documented `zones.yaml` file instead of buried in source code. Comments explain what each field means and how to measure it. Edit your zone areas, sun exposure, and soil profiles without touching JavaScript.
+**AI-enriched notifications.** Watchdog alerts are transformed from raw messages ("No runs in 24 hours") into context-aware notifications that explain what the system was doing, current soil moisture, and whether you need to act. Uses Kimi K2 Thinking for reasoning.
+
+**Adaptive zone tuning.** 14-day rolling analysis compares how often each zone triggers watering against what the ET model predicts. When a zone consistently waters 30%+ more or less than expected, the system suggests an ET correction factor. After 3 consecutive same-direction suggestions, the correction auto-applies within safe bounds (0.8x-1.2x). The model gets better over time.
+
+**Configurable water rates.** Your utility's tiered rate schedule lives in `rates.yaml` - not hardcoded. Supports AWC-based tier structures (like City of Golden, CO), monthly fixed charges (base fee, wastewater, drainage), and multi-tier volume pricing. Update the file when rates change, no code changes needed.
+
+**Dark mode.** Full dark theme with automatic OS preference detection and a manual toggle button in the header. Preference persists in localStorage. All UI components - cards, badges, meters, forms, tables - adapt cleanly.
+
+**Daily summary job.** A 6am systemd timer generates an HTML morning report with overnight activity, current soil moisture per zone, today's forecast, weather source status, month-to-date cost, discrepancy warnings, and advisor insights. When `AI_API_KEY` is configured, Kimi K2 Thinking adds a 2-4 sentence narrative summary. Delivered via n8n webhook.
+
+**Responsive web UI.** PWA-capable local web UI with sticky header, 44px touch targets, single-column mobile layout, and dark mode. Guided setup for non-coders, raw editors for power users. Pages: Dashboard, Run History, Zones, Charts, Briefing, Settings, Guided Setup.
+
+**Status page.** A static HTML file regenerated after every run, written to `~/.smart-water/status.html` by default. It includes soil moisture bars, forecast cards, recent decisions, and cost tracking.
+
+**YAML zone config.** Zone profiles live in a documented `zones.yaml` file. Comments explain what each field means and how to measure it. Edit your zone areas, sun exposure, and soil profiles without touching JavaScript.
 
 **Home Assistant integration.** Publishes retained MQTT messages after every run: per-zone moisture percentages, weather data with source, daily/monthly cost, and last decision. HA auto-discovery creates sensor entities automatically. Uses your existing MQTT broker.
 
-**Watchdog.** A separate systemd timer runs at 2am. If no healthy run outcome completed in the past 24 hours during growing season, it sends an alert via the notification webhook path.
+**Watchdog.** A separate systemd timer runs at 2am. If no healthy run outcome completed in the past 24 hours during growing season, it sends an AI-enriched alert via the notification webhook path.
+
+**Security hardened.** CSRF tokens on all POST forms, 64KB body size limits, login rate limiting (5 attempts, 15-minute lockout), Content-Security-Policy headers, path traversal protection on static files, timing-safe password comparison, and newline injection prevention in env values.
 
 **Optional live smoke test.** Once you intentionally leave shadow mode, you can run a short one-zone commissioning test through `smart-water smoke-test` or the browser UI. It uses the same command path and logging as a real watering run.
 
@@ -154,9 +176,8 @@ The daily summary job gives you the overnight recap without needing to touch a t
 
 - Rachio cloud access is still required to start watering runs.
 - Notification delivery and summary delivery currently go through n8n-style webhooks; built-in SMTP delivery is not implemented.
-- Flow-meter-assisted calibration is scaffolded but not fully wired into the main execution loop.
-- ET correction factors can be stored and read, but automatic ET drift analysis is not complete yet.
-- The test suite (89 tests) covers core logic, web UI auth/helpers, and integration edges, but it is still not a substitute for a live smoke test against your own Rachio account, MQTT broker, and timers.
+- Flow-meter-assisted calibration is scaffolded but requires an EveryDrop meter and is not wired into the main execution loop.
+- The test suite (112 tests) covers core logic, web UI, auth, AI integration, finance, and routing, but it is still not a substitute for a live smoke test against your own Rachio account, MQTT broker, and timers.
 
 ## Project Structure
 
@@ -164,53 +185,66 @@ The daily summary job gives you the overnight recap without needing to touch a t
 src/
   cli.js              Entry point - run/water/status/cleanup commands
   web.js              Web UI bootstrap (server setup only)
+  briefing-runner.js   Weekly intelligence briefing runner (Sunday 7am)
   config.js            Configuration with env var support
   weather.js           Weather coordinator with cross-validation and fallback
-  watchdog.js          Missed-run alert checker
-  summary.js           Daily HTML summary generator
+  watchdog.js          Missed-run alert checker with AI enrichment
+  summary.js           Daily HTML summary generator with AI narrative
   status-page.js       Static HTML status page generator
   notify.js            Notification dispatch (webhook delivery)
   mqtt.js              MQTT publisher for Home Assistant
   time.js              Local timezone helpers (America/Denver)
   log.js               Structured logger for systemd journal
-  yaml-loader.js       YAML zone config loader
+  yaml-loader.js       YAML zone and rate config loader
   env.js               Environment file read/write helpers
   explain.js           Plain English decision explanations
   web-forms.js         Form data parsing and zone config serialization
+  ai/
+    advisor.js         Deterministic insights + Kimi K2 API client
+    chat.js            Ask Your Yard - natural language data queries
+    narratives.js      Decision storytelling with DB caching
+    notifications.js   Context-aware alert enrichment
+    briefing.js        Multi-period trend analysis and YoY comparison
   web/
-    auth.js            Session-based authentication and cookie handling
-    html.js            HTML helpers, layout shell, and reusable UI components
-    pages.js           Page renderers (dashboard, logs, zones, settings, setup, charts, login)
-    routes.js          HTTP request handler and route dispatch
+    auth.js            Session auth, CSRF tokens, rate limiting
+    html.js            HTML helpers, layout shell, dark mode toggle
+    pages.js           Page renderers (dashboard, logs, zones, charts, briefing, settings, setup, login)
+    routes.js          HTTP handler, route dispatch, security headers
   core/
     et.js              Evapotranspiration calculations (Hargreaves variant)
     soil-moisture.js   Per-zone moisture balance tracking
     rule-engine.js     5-stage decision engine
     soak.js            Smart soak cycle builder
-    finance.js         Tiered cost calculations
-    tuning.js          Adaptive zone tuning and flow calibration
+    finance.js         Tiered cost calculations with AWC support
+    tuning.js          Adaptive zone tuning with 14-day rolling analysis
   api/
     rachio.js          Rachio API client (zones, profiles, commands, flow)
     ambient.js         Ambient Weather API client (current + live rain check)
     openmeteo.js       OpenMeteo API client (archive + forecast)
     http.js            Shared fetch with retry and timeout
   db/
-    schema.sql         SQLite table definitions (12 tables)
+    schema.sql         SQLite table definitions (13 tables)
     state.js           All database read/write operations
   public/
-    styles.css         Cacheable CSS stylesheet for the web UI
+    styles.css         Cacheable CSS with light/dark themes
+    theme.js           Dark mode toggle with localStorage persistence
+    ai.js              Client-side chat, narrative expansion, briefing UI
     manifest.json      PWA manifest
     sw.js              Service worker for offline support
     icon-192.svg       App icon (small)
     icon-512.svg       App icon (large)
 zones.yaml             Zone configuration (edit this for your yard)
-tests/                 89 tests covering core logic, web UI, and integration paths
+rates.yaml             Water rate schedule (edit for your utility)
+tests/                 112 tests covering core logic, finance, web UI, auth, AI, and routing
 deploy/
   smart-water.service  systemd oneshot service
   smart-water.timer    Hourly timer
   smart-water-watchdog.service/timer
   smart-water-summary.service/timer
+  smart-water-briefing.service/timer  Weekly intelligence briefing (Sunday 7am)
+  smart-water-web.service             Persistent web UI server
   install.sh           Deployment script
+  auto-update.sh       Git-based auto-deploy (polls every 2 minutes)
   n8n-workflows/       n8n integration design
 eslint.config.js       ESLint flat config - catches real bugs, no style opinions
 ```
@@ -224,6 +258,7 @@ eslint.config.js       ESLint flat config - catches real bugs, no style opinions
 - systemd (for scheduling)
 - n8n or another webhook receiver (optional, for notifications and summary delivery)
 - MQTT broker (optional, for Home Assistant)
+- Kimi API key from platform.moonshot.ai (optional, for AI features)
 
 ## Setup
 
@@ -261,6 +296,34 @@ node src/cli.js smoke-test --zone 1 --minutes 1
 journalctl -u smart-water -f
 ```
 
+### AI Features (Optional)
+
+```bash
+# Get a free API key from platform.moonshot.ai
+# Add to your env file:
+echo 'AI_API_KEY=sk-your-key-here' >> ~/.smart-water/.env
+echo 'AI_API_BASE_URL=https://api.moonshot.ai/v1' >> ~/.smart-water/.env
+echo 'AI_MODEL=kimi-k2-thinking' >> ~/.smart-water/.env
+
+# Restart the web UI to enable:
+#   - Ask Your Yard chat on the dashboard
+#   - Decision storytelling in Run History
+#   - AI-enriched watchdog alerts
+#   - Weekly intelligence briefing with AI narrative
+#   - AI narrative in daily summary emails
+```
+
+AI costs approximately $0.30/year at typical usage (one daily summary call + occasional chat questions and narrative generation).
+
+### Water Rate Configuration
+
+```bash
+# Edit rates.yaml to match your utility's rate schedule
+# The default is configured for City of Golden, CO (2026 rates)
+# Update when your utility publishes new rates - no code changes needed
+vi rates.yaml
+```
+
 ## Commands
 
 **Getting started:**
@@ -282,13 +345,13 @@ journalctl -u smart-water -f
 | `node src/cli.js water` | Manual watering (overrides forecast/budget, respects safety) |
 | `node src/cli.js status` | Current moisture, usage, and last run |
 | `node src/cli.js status --json` | Machine-readable status for n8n/scripts |
-| `node src/cli.js web` | Local browser UI for status, run history, guided setup, zones, and settings |
+| `node src/cli.js web` | Local browser UI with dashboard, chat, history, charts, briefing, zones, settings |
 | `node src/cli.js cleanup` | Remove data older than 90 days |
 
 ## Development
 
 ```bash
-# Run the test suite (89 tests, Node.js built-in test runner)
+# Run the test suite (112 tests, Node.js built-in test runner)
 npm test
 
 # Lint the codebase (ESLint flat config, zero style opinions)
@@ -298,14 +361,22 @@ npm run lint
 npm run check
 ```
 
-The web UI is organized into focused modules under `src/web/` - auth, HTML helpers, page renderers, and route dispatch are separated so each file stays under 500 lines. CSS is served as a cacheable static file from `src/public/styles.css` rather than inlined in every response.
+The codebase is organized into focused modules:
+
+- `src/web/` - auth, HTML helpers, page renderers, route dispatch (each under 500 lines)
+- `src/ai/` - chat, narratives, notifications, briefing, advisor (each a single-purpose module)
+- `src/core/` - ET calculations, soil moisture, rule engine, soak cycles, finance, tuning
+- `src/api/` - Rachio, Ambient Weather, OpenMeteo clients
+- `src/public/` - CSS with dark mode, theme toggle, AI client JS, PWA assets
 
 ## Configuration
 
 - **Zone profiles:** Edit `zones.yaml` - documented YAML with comments explaining each field
-- **System settings:** `src/config.js` - thresholds, rates, schedule windows, emergency triggers
+- **Water rates:** Edit `rates.yaml` - your utility's tiered rate schedule, fixed charges, and AWC threshold
+- **System settings:** `src/config.js` - thresholds, schedule windows, emergency triggers (loaded from YAML files at startup)
 - **Secrets and location:** `~/.smart-water/.env` - API keys, MQTT broker, notification webhook, `LAT`, `LON`, `LOCATION_TIMEZONE`
-- **Optional web auth:** set `WEB_UI_PASSWORD` and restart the web UI if you want browser sign-in on top of localhost binding
+- **AI features:** Set `AI_API_KEY`, `AI_API_BASE_URL`, and `AI_MODEL` in your env file
+- **Optional web auth:** Set `WEB_UI_PASSWORD` and restart the web UI for browser sign-in on top of localhost binding
 - **See** `.env.example` for all available environment variables
 
 ## Community
