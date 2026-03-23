@@ -1,29 +1,65 @@
 # Smart Water System
 
-Standalone irrigation controller that takes over scheduling for a Rachio sprinkler system using your weather station data plus forecast/archive weather APIs, ET-based soil moisture modeling, multi-day forecasting, and AI-powered insights via Kimi K2 Thinking. Gives you full control over the decision logic that Rachio keeps behind its app.
+Standalone irrigation controller that takes over scheduling for a Rachio sprinkler system using your weather station data, USDA soil survey, satellite vegetation imagery, reference ET cross-validation, multi-day forecasting, and AI-powered insights via Kimi K2 Thinking. Gives you full control over the decision logic that Rachio keeps behind its app.
 
-This repo is a working homelab-oriented controller with a full-featured web UI, AI chat interface, adaptive tuning, and multi-period trend analysis. The core decision engine is fully deterministic - the AI layer is advisory only and never changes watering decisions.
+This repo is a working homelab-oriented controller with a full-featured web UI, AI chat interface, satellite NDVI timeline, adaptive tuning backed by ground-truth data, and multi-period trend analysis. The core decision engine is fully deterministic - the AI layer is advisory only and never changes watering decisions.
+
+## Data Sources
+
+The system ingests data from six external sources, cross-validates them against each other, and stores everything in SQLite for historical analysis:
+
+| Source | What it provides | Auth | Update frequency |
+| ------ | ---------------- | ---- | --------------- |
+| **Ambient Weather** | Live temperature, humidity, wind, rain, solar radiation | API key | Every run |
+| **OpenMeteo** | 7-day forecast + 2-year daily archive (temp, rain, solar, wind, FAO-56 reference ET) | None | Daily + backfill |
+| **USDA Soil Data Access** | Soil type, available water capacity, pH, organic matter, infiltration rate for your address | None | Once (cached) |
+| **CoAgMet** | Reference evapotranspiration from nearest Colorado ag weather station, for cross-validating the ET model | None | Daily + 2-year backfill |
+| **Sentinel-2 Satellite** | 10-meter NDVI vegetation health imagery and statistics, true color photos | Free Copernicus account | Every 5 days |
+| **Rachio API** | Zone control, run verification, device status | API key | Every run |
 
 ## How It Works
 
 ```mermaid
-flowchart LR
-    WX["Weather Station\n+ Forecast APIs"] --> DECIDE
-    DB[("SQLite\nSoil + Finance\nState")] --> DECIDE
+flowchart TB
+    subgraph DATA["Data Sources"]
+        WX["Ambient Weather\nLive Station"]
+        OM["OpenMeteo\nForecast + 2yr Archive"]
+        USDA["USDA Soil Survey\nAWC, pH, Texture"]
+        COAG["CoAgMet\nReference ET"]
+        SAT["Sentinel-2\nNDVI Satellite"]
+    end
 
-    DECIDE{"Safe?\nSoil needs it?\nWithin budget?"}
+    subgraph ENGINE["Decision Engine"]
+        DECIDE{"5-Stage Pipeline\nSafety - Forecast\nMoisture - Budget\nScheduling"}
+        RAIN{"Live Rain\nCheck"}
+    end
 
-    DECIDE -->|YES| RAIN{"Raining\nright now?"}
-    DECIDE -->|NO| LOG["Log\nSkip Reason"]
+    subgraph LEARN["Learning Loop"]
+        TUNE["Adaptive Tuning\n14-day Analysis"]
+        ETVAL["ET Cross-Validation\nvs CoAgMet Reference"]
+        NDVI["NDVI Trend\nVegetation Health"]
+    end
 
-    RAIN -->|NO| RACHIO["Rachio\nWater Zones"]
-    RAIN -->|YES| ABORT["Abort\nActive Rain"]
+    WX --> DECIDE
+    OM --> DECIDE
+    USDA -.->|soil properties| DECIDE
+    DB[("SQLite\n18 Tables\n2yr History")] --> DECIDE
 
-    RACHIO --> VERIFY["Verify\nAccepted"]
-    VERIFY --> DB
+    DECIDE -->|WATER| RAIN
+    DECIDE -->|SKIP| LOG["Log\nSkip Reason"]
 
-    TIMER(["Hourly\nsystemd timer"]) -.-> DECIDE
-    PHONE(["Manual Trigger\nCLI / webhook"]) -.-> DECIDE
+    RAIN -->|Clear| RACHIO["Rachio\nWater Zones"]
+    RAIN -->|Raining| ABORT["Abort"]
+
+    RACHIO --> VERIFY["Verify"] --> DB
+
+    DECIDE --> TUNE --> DB
+    COAG --> ETVAL --> DB
+    SAT --> NDVI --> DB
+    TUNE -.->|correction factors| DECIDE
+
+    TIMER(["Hourly Timer"]) -.-> DECIDE
+    AI["Kimi K2 Thinking\nChat + Briefing + Alerts"] -.-> DB
 
     style DECIDE fill:#e65100,stroke:#bf360c,color:#fff
     style RAIN fill:#1565c0,stroke:#0d47a1,color:#fff
@@ -32,9 +68,16 @@ flowchart LR
     style LOG fill:#c62828,stroke:#b71c1c,color:#fff
     style ABORT fill:#c62828,stroke:#b71c1c,color:#fff
     style WX fill:#1565c0,stroke:#0d47a1,color:#fff
+    style OM fill:#1565c0,stroke:#0d47a1,color:#fff
+    style USDA fill:#00695c,stroke:#004d40,color:#fff
+    style COAG fill:#00695c,stroke:#004d40,color:#fff
+    style SAT fill:#00695c,stroke:#004d40,color:#fff
     style DB fill:#1565c0,stroke:#0d47a1,color:#fff
+    style TUNE fill:#f57f17,stroke:#e65100,color:#fff
+    style ETVAL fill:#f57f17,stroke:#e65100,color:#fff
+    style NDVI fill:#f57f17,stroke:#e65100,color:#fff
     style TIMER fill:#6a1b9a,stroke:#4a148c,color:#fff
-    style PHONE fill:#6a1b9a,stroke:#4a148c,color:#fff
+    style AI fill:#6a1b9a,stroke:#4a148c,color:#fff
 ```
 
 ## What it does
@@ -47,14 +90,18 @@ Every hour, the system checks whether your lawn needs water by running a five-st
 4. **Budget** - Enforce daily gallon and cost limits based on your utility's tiered water rates
 5. **Scheduling** - Build an optimized run with smart soak cycles for clay soil infiltration
 
-If watering is needed, a final real-time rain check confirms it's not actively raining right now. Then the system sends the command to Rachio, verifies it was accepted, and updates all state. If not, it logs the skip reason and moves on.
+After the decision, the system runs data integrations:
+
+- **ET cross-validation:** Compares the calculated ET against CoAgMet's measured reference ET and logs any deviation
+- **NDVI refresh:** Fetches fresh satellite vegetation data if the last reading is older than 5 days
+- **Adaptive tuning:** Analyzes 14-day watering patterns and adjusts ET correction factors when the model drifts
+
+If watering is needed, a final real-time rain check confirms it's not actively raining right now. Then the system sends the command to Rachio, verifies it was accepted, and updates all state.
 
 ## How It Compares
 
-Several open-source projects tackle ET-based irrigation. Here's how they differ:
-
 | | Smart Water | [HAsmartirrigation](https://github.com/jeroenterheerdt/HAsmartirrigation) | [homebridge-smart-irrigation](https://github.com/MTry/homebridge-smart-irrigation) | [OpenSprinkler Weather](https://github.com/OpenSprinkler/OpenSprinkler-Weather) |
-|---|:---:|:---:|:---:|:---:|
+| --- | :---: | :---: | :---: | :---: |
 | **Standalone** (no platform required) | Yes | No (Home Assistant) | No (Homebridge) | No (OpenSprinkler HW) |
 | **Rachio API control** | Yes | No | No | No |
 | **Local weather station** (primary source) | Yes | No | No | No |
@@ -63,76 +110,63 @@ Several open-source projects tackle ET-based irrigation. Here's how they differ:
 | **Real-time rain abort** | Yes | No | No | No |
 | **AI-powered insights** | Yes (Kimi K2) | No | No | No |
 | **Natural language chat** | Yes | No | No | No |
+| **Satellite vegetation health** | Yes (Sentinel-2) | No | No | No |
+| **USDA soil data integration** | Yes | No | No | No |
+| **Reference ET cross-validation** | Yes (CoAgMet) | No | No | No |
 | **Adaptive zone tuning** | Yes | No | No | No |
-| **ET method** | Hargreaves | FAO-56 PyETo | Penman-Monteith | ETo % scaling |
+| **ET method** | Hargreaves + CoAgMet validation | FAO-56 PyETo | Penman-Monteith | ETo % scaling |
 | **Per-zone soil moisture budget** | Yes | Yes | No | No |
 | **Smart soak cycles** | Yes | No | No | No |
-| **Cost / budget tracking** | Yes | No | No | No |
+| **Configurable utility rates** | Yes (YAML) | No | No | No |
 | **Dark mode** | Yes | N/A | N/A | No |
 | **MQTT / HA integration** | Optional | Native | Native | No |
-| **Daily summary email** | Yes | No | No | No |
 | **Weekly intelligence briefing** | Yes | No | No | No |
-
-HAsmartirrigation is the most mature project in this space and a great option if you already run Home Assistant. This project targets the gap for Rachio owners who want a standalone, inspectable decision engine without a platform dependency - and specifically addresses the documented failure modes below.
+| **2-year historical data** | Yes | No | No | No |
 
 ## Rachio's Problems, Our Solutions
 
-This project is aimed at homeowners who want an inspectable, self-hosted decision engine for common smart-irrigation pain points: stale weather data, opaque skip decisions, cloud dependency, and limited observability. The sections below describe what this repo actually does today.
+This project is aimed at homeowners who want an inspectable, self-hosted decision engine for common smart-irrigation pain points: stale weather data, opaque skip decisions, cloud dependency, and limited observability.
 
 ### "It watered during a thunderstorm"
 
-**The Rachio problem:** Weather Intelligence evaluates conditions 12 hours and 1 hour before a scheduled run. Rain that starts within that final window does not trigger a skip. Users on the Rachio community forum document watering during active heavy rainfall with 0.25"+ already accumulated. One user with a Tempest weather station confirmed that 0.25" of rain at a rate well above the skip threshold simply didn't register because it fell inside the timing blind spot.
+**The Rachio problem:** Weather Intelligence evaluates conditions 12 hours and 1 hour before a scheduled run. Rain that starts within that final window does not trigger a skip.
 
-**Our solution:** A live rain check hits your Ambient Weather station between the DECIDE and COMMAND phases of every run. If any measurable rainfall is detected (hourly rain > 0.02" or daily accumulation exceeds the skip threshold), the run is aborted and logged as "Active Rain Detected." This check uses a fresh, uncached API call - not data from minutes or hours ago. The system will never send water to your yard while it's already raining.
+**Our solution:** A live rain check hits your Ambient Weather station between the DECIDE and COMMAND phases of every run. If any measurable rainfall is detected (hourly rain > 0.02" or daily accumulation exceeds the skip threshold), the run is aborted. The system will never send water to your yard while it's already raining.
 
 ### "Weather Intelligence said 0.14 inches when my gauge read 0.35"
 
-**The Rachio problem:** Rachio 3 routes weather data through Aeris Weather, which aggregates from CWOP, PWSWeather, and Weather Underground networks. Users report significant precipitation discrepancies between what their personal station measures and what Rachio records. There's no way to see the discrepancy or know which data source Rachio actually used. One user documented Rachio showing 0.14" for a day when local flood control confirmed 0.35".
+**The Rachio problem:** Rachio routes weather data through Aeris Weather. Users report significant precipitation discrepancies with no way to see which source was used.
 
-**Our solution:** Every day, the system cross-validates precipitation readings between your Ambient Weather station and OpenMeteo's archive data. Discrepancies exceeding 0.15" are logged to a `weather_discrepancy` table with both values and what was used. The daily summary job also highlights repeated high-discrepancy days so you can investigate rain gauge drift or source mismatch. You can query exactly what data drove every decision.
+**Our solution:** Every day, the system cross-validates precipitation readings between your Ambient Weather station and OpenMeteo's archive data. Discrepancies are logged with both values and what was used. The daily summary highlights repeated high-discrepancy days so you can investigate rain gauge drift.
 
 ### "My station went offline and Rachio never told me"
 
-**The Rachio problem:** When a nearby personal weather station goes offline, Rachio silently falls back to more distant stations or interpolated grid data. There is no notification. Users discover weeks later that their "hyperlocal" 36-foot-resolution data was actually coming from a station miles away with different microclimate conditions. The system continues making decisions on degraded data without any indication.
+**The Rachio problem:** When a weather station goes offline, Rachio silently falls back to distant stations with no notification.
 
-**Our solution:** On each run, the controller checks how old the last Ambient Weather reading is. Once the cache age crosses 4 hours, 12 hours, and 24 hours, it escalates alerts and tells you whether it is falling back to OpenMeteo data or conservative defaults. When `AI_API_KEY` is configured, watchdog alerts are enriched with context - instead of "Weather station stale" you get a full explanation of what the system is doing about it, current soil moisture, and whether you need to act. The daily summary also reports the active weather source and its freshness.
+**Our solution:** The system tracks weather station staleness with escalating alerts at 4, 12, and 24 hours. When `AI_API_KEY` is configured, watchdog alerts are enriched with context explaining what the system is doing about it, current soil moisture, and whether you need to act.
 
 ### "Flex Daily went 8 days without watering in 100-degree heat"
 
-**The Rachio problem:** Flex Daily's ET model uses fixed parameters that don't account for extreme conditions well. Users in Phoenix and other high-heat climates document multi-day watering gaps during 100F+ temperatures. The model is also highly sensitive to precipitation rate calibration - without catch cup testing, users report 20-hour schedules or severe over/under-watering. Many users give up and revert to fixed schedules.
+**The Rachio problem:** Flex Daily's ET model uses fixed parameters that don't account for extreme conditions. Users report multi-day watering gaps during 100F+ temperatures.
 
-**Our solution:** Three layers of protection:
-- **Emergency cooling** with dynamic temperature triggers that adjust based on solar radiation, humidity, and wind - not just air temperature. When conditions are genuinely dangerous for turf, the system waters regardless of what the daily schedule decided.
-- **Degraded-mode policy** that never skips watering in summer because a data source is unavailable. If your weather station and forecast APIs both go down during a heat wave, conservative defaults ensure watering continues.
-- **Adaptive zone tuning** that analyzes 14-day rolling watering frequency per zone and compares against predicted frequency based on ET and zone capacity. When a zone consistently waters 30%+ more or less often than expected, the system suggests and eventually auto-applies an ET correction factor (within 0.8x-1.2x bounds). The model gets more accurate over time instead of degrading.
+**Our solution:** Four layers of protection:
 
-### "Cycle and Soak activated on some zones but not others"
-
-**The Rachio problem:** Users report Smart Cycle inconsistently activating across zones in the same schedule. Some zones get split into cycles with soak intervals, others don't, with no clear explanation in the app. One user had an 8-minute zone silently extended to 46 minutes.
-
-**Our solution:** Smart soak is deterministic and transparent. Any lawn zone exceeding the configurable soak threshold (default: 20 minutes) gets split into two equal passes. The full schedule with all soak splits is logged in the decision record. You can see exactly which zones got split, what the half-times are, and why. No surprises.
+- **Emergency cooling** with dynamic temperature triggers adjusted for solar radiation, humidity, and wind.
+- **Degraded-mode policy** that never skips watering in summer because a data source is unavailable.
+- **Adaptive zone tuning** that compares actual watering frequency against predicted frequency over 14-day windows and auto-corrects ET factors when the model drifts.
+- **Reference ET cross-validation** that compares the system's Hargreaves calculations against CoAgMet's ASCE Penman-Monteith measurements daily. When the model is consistently 15%+ off, the advisor flags it and the tuning system compensates.
 
 ### "I have no idea why it did that"
 
-**The Rachio problem:** The app shows what happened (watered zone 3 for 25 minutes) but not why. Users can't determine whether a run was triggered by ET deficit, proactive forecast logic, or schedule. When the system skips, the reason shown is often generic ("Saturation Skip") even when the yard is visibly dry.
+**The Rachio problem:** The app shows what happened but not why. Skip reasons are generic.
 
-**Our solution:** Every run is logged across three phases (DECIDE, COMMAND, VERIFY) so you can tell whether the system chose to water, whether the command was sent, and whether Rachio accepted it. The logs include the decision reason, selected zones, gallons, cost totals, success/failure state, and any command error message.
-
-When `AI_API_KEY` is configured, the Run History page adds an "Explain" button on each decision row. Click it and Kimi K2 Thinking generates a 2-4 sentence plain English narrative explaining what happened and why, using your actual system data. Narratives are cached in the database so the same row never costs another API call.
-
-You can also use "Ask Your Yard" on the dashboard - type any question in plain English and get answers grounded in your live soil moisture, weather, forecast, usage, and decision history.
-
-### "If my internet goes down, I lose all control"
-
-**The Rachio problem:** No local decision path. All schedule creation, modification, and manual triggering still depend on reachable Rachio cloud services.
-
-**Our solution:** The decision engine runs on your own hardware, and SQLite stores all state locally. Weather inputs have fallback behavior, and the status/MQTT/history surfaces remain available locally. You still need the Rachio cloud API to actuate the controller, but the scheduling logic, history, and tuning state are yours.
+**Our solution:** Every run is logged across three phases (DECIDE, COMMAND, VERIFY). When `AI_API_KEY` is configured, the Run History page adds an "Explain" button on each decision row - Kimi K2 Thinking generates a plain English narrative cached in the database. "Ask Your Yard" on the dashboard lets you type any question and get answers grounded in your live data, 2-year weather archive, soil survey, ET validation history, and satellite vegetation health.
 
 ### "I don't know my precipitation rates and I'm not doing catch cup tests"
 
-**The Rachio problem:** Flex Daily's accuracy depends heavily on correct precipitation rate calibration for each zone. Most users never do catch cup tests, so the model runs on default values from day one. This is the #1 setup barrier and the primary reason Flex Daily produces absurd schedules (20-hour runs, week-long gaps) for many users.
+**The Rachio problem:** Flex Daily depends on precipitation rate calibration most users never do, leading to absurd schedules.
 
-**Current state in this repo:** The database tables and suggestion logic for flow-based calibration are present, but end-to-end flow audit collection requires an EveryDrop flow meter and is not wired into the main run loop yet. The adaptive tuning system compensates by detecting when zones consistently need more or less water than predicted and adjusting ET correction factors automatically.
+**Our solution:** The USDA Soil Data Access API returns surveyed soil properties for your exact address - available water capacity, infiltration rate, pH, organic matter - replacing guesswork with ground truth. The system compares configured AWC against USDA data and flags mismatches. The adaptive tuning system compensates for remaining calibration errors by adjusting ET correction factors based on observed watering patterns.
 
 ## Key Features
 
@@ -140,48 +174,50 @@ You can also use "Ask Your Yard" on the dashboard - type any question in plain E
 
 **Decision-Command-Verify.** Every watering run is logged in three phases. The decision is recorded before any command is sent. If Rachio rejects the command or doesn't respond, state is not corrupted. The watchdog catches silent failures.
 
-**Ask Your Yard.** A natural language chat box on the dashboard powered by Kimi K2 Thinking. Ask questions about your irrigation system in plain English - "Why didn't you water yesterday?", "Which zone is driest?", "How much have I spent this month?" - and get answers grounded in your live data. The thinking model reasons through your soil moisture, weather, forecast, usage, discrepancies, and advisor insights before responding.
+**Ask Your Yard.** A natural language chat box on the dashboard powered by Kimi K2 Thinking Turbo. Ask questions in plain English - "Why didn't you water yesterday?", "Which zone is driest?", "How much have I spent this month?" - and get answers grounded in your live data, 2-year weather archive, reference ET history, and satellite vegetation readings.
 
-**Decision storytelling.** Each row in Run History has an "Explain" button that generates a plain English narrative. "Skipped at 7:02 AM because your weather station recorded 0.31 inches overnight and the 3-day forecast shows another 0.15 inches tomorrow. All 9 zones are above 65% capacity." Narratives are cached in the database.
+**Decision storytelling.** Each row in Run History has an "Explain" button that generates a plain English narrative using Kimi K2 Thinking Turbo. Narratives are cached in the database so the same row never costs another API call.
 
-**Weekly intelligence briefing.** A Sunday morning report with multi-period trend analysis: 7-day, 14-day, 30-day, 90-day, and full season. Week-over-week and month-over-month usage comparison. Year-over-year delta against the same calendar window from last year. Kimi K2 Thinking generates a structured narrative with headline, trends, and actionable recommendations. Available on-demand from the Briefing tab or via the Sunday 7am systemd timer.
+**Satellite vegetation health.** Sentinel-2 satellite imagery at 10-meter resolution showing your yard's vegetation health over time. Three comparison modes: week-to-week (12 weeks), month-to-month (12 months), year-to-year (2 years quarterly). Choose between NDVI-enhanced view (vegetation pops green, stress shows yellow/brown) or true-color satellite photos. NDVI statistics feed into the advisor - when vegetation health drops 10%+ between observation periods, the system flags it.
 
-**Advisor insights.** Deterministic analysis (no AI call) shown on the dashboard: forecast confidence warnings when weather sources disagree, rain gauge bias detection when precipitation readings diverge 20%+ over 7 days, and flow calibration alerts when zone meter readings deviate from the model.
+**Reference ET cross-validation.** Every daily run compares the system's Hargreaves ET calculation against the ASCE Penman-Monteith reference ET measured at the nearest CoAgMet station. Deviations are logged to the `et_validation` table. When the model runs 15%+ off for 14+ days, the advisor generates an insight and the tuning system compensates. 2 years of historical reference ET are backfilled for trend analysis.
 
-**AI-enriched notifications.** Watchdog alerts are transformed from raw messages ("No runs in 24 hours") into context-aware notifications that explain what the system was doing, current soil moisture, and whether you need to act. Uses Kimi K2 Thinking for reasoning.
+**USDA soil data integration.** Queries the USDA Soil Data Access API for surveyed soil properties at your address: soil series name, available water capacity, infiltration rate, pH, organic matter, and profile depth. Compares against configured values and flags mismatches. Data is cached in the database.
 
-**Adaptive zone tuning.** 14-day rolling analysis compares how often each zone triggers watering against what the ET model predicts. When a zone consistently waters 30%+ more or less than expected, the system suggests an ET correction factor. After 3 consecutive same-direction suggestions, the correction auto-applies within safe bounds (0.8x-1.2x). The model gets better over time.
+**Weekly intelligence briefing.** A Sunday morning report with multi-period trend analysis: 7-day, 14-day, 30-day, 90-day, full season, and year-over-year. Includes ET model accuracy score, NDVI vegetation trend, and all advisor insights. Kimi K2 Thinking generates a structured narrative with headline, trends, and actionable recommendations. Available on-demand from the Briefing tab.
 
-**Configurable water rates.** Your utility's tiered rate schedule lives in `rates.yaml` - not hardcoded. Supports AWC-based tier structures (like City of Golden, CO), monthly fixed charges (base fee, wastewater, drainage), and multi-tier volume pricing. Update the file when rates change, no code changes needed.
+**Advisor insights.** Deterministic analysis shown on the dashboard combining all data sources: forecast confidence when weather sources disagree, rain gauge bias detection, ET model drift against reference measurements, soil configuration mismatches against USDA survey data, NDVI vegetation health trends from satellite, and flow calibration alerts.
 
-**Dark mode.** Full dark theme with automatic OS preference detection and a manual toggle button in the header. Preference persists in localStorage. All UI components - cards, badges, meters, forms, tables - adapt cleanly.
+**AI-enriched notifications.** Watchdog alerts are transformed from raw messages into context-aware notifications explaining what the system is doing, current soil moisture, and whether you need to act.
 
-**Daily summary job.** A 6am systemd timer generates an HTML morning report with overnight activity, current soil moisture per zone, today's forecast, weather source status, month-to-date cost, discrepancy warnings, and advisor insights. When `AI_API_KEY` is configured, Kimi K2 Thinking adds a 2-4 sentence narrative summary. Delivered via n8n webhook.
+**Adaptive zone tuning.** 14-day rolling analysis compares actual watering frequency against predicted frequency. When a zone waters 30%+ more or less than expected, the system suggests an ET correction factor. After 3 consecutive same-direction suggestions, the correction auto-applies within safe bounds (0.8x-1.2x). Cross-validated against CoAgMet reference ET so corrections are grounded in measured data.
 
-**Responsive web UI.** PWA-capable local web UI with sticky header, 44px touch targets, single-column mobile layout, and dark mode. Guided setup for non-coders, raw editors for power users. Pages: Dashboard, Run History, Zones, Charts, Briefing, Settings, Guided Setup.
+**2-year historical archive.** OpenMeteo weather data (temperature, rain, solar radiation, wind, FAO-56 reference ET) and CoAgMet reference ET are backfilled for 2 years and stored in SQLite. All historical data is queryable via API endpoints and available to the AI chat, briefing, and advisor modules.
 
-**Status page.** A static HTML file regenerated after every run, written to `~/.smart-water/status.html` by default. It includes soil moisture bars, forecast cards, recent decisions, and cost tracking.
+**Configurable water rates.** Your utility's tiered rate schedule lives in `rates.yaml`. Supports AWC-based tier structures (like City of Golden, CO), monthly fixed charges (base fee, wastewater, drainage), and multi-tier volume pricing. Update the file when rates change, no code changes needed.
 
-**YAML zone config.** Zone profiles live in a documented `zones.yaml` file. Comments explain what each field means and how to measure it. Edit your zone areas, sun exposure, and soil profiles without touching JavaScript.
+**Dark mode.** Full dark theme with automatic OS preference detection and a manual toggle button in the header. Preference persists in localStorage.
 
-**Home Assistant integration.** Publishes retained MQTT messages after every run: per-zone moisture percentages, weather data with source, daily/monthly cost, and last decision. HA auto-discovery creates sensor entities automatically. Uses your existing MQTT broker.
+**Daily summary job.** A 6am systemd timer generates an HTML morning report with overnight activity, soil moisture, forecast, weather source status, cost, discrepancy warnings, advisor insights, and AI narrative.
 
-**Watchdog.** A separate systemd timer runs at 2am. If no healthy run outcome completed in the past 24 hours during growing season, it sends an AI-enriched alert via the notification webhook path.
+**Responsive web UI.** PWA-capable local web UI with sticky header, 44px touch targets, single-column mobile layout, and dark mode. Pages: Dashboard, Run History, Zones, Charts, Briefing, Satellite, Settings, Guided Setup.
 
-**Security hardened.** CSRF tokens on all POST forms, 64KB body size limits, login rate limiting (5 attempts, 15-minute lockout), Content-Security-Policy headers, path traversal protection on static files, timing-safe password comparison, and newline injection prevention in env values.
+**Home Assistant integration.** Publishes retained MQTT messages after every run: per-zone moisture percentages, weather data with source, daily/monthly cost, and last decision. HA auto-discovery creates sensor entities automatically.
 
-**Optional live smoke test.** Once you intentionally leave shadow mode, you can run a short one-zone commissioning test through `smart-water smoke-test` or the browser UI. It uses the same command path and logging as a real watering run.
+**Security hardened.** CSRF tokens on all POST forms, 64KB body size limits, login rate limiting (5 attempts, 15-minute lockout), Content-Security-Policy headers, path traversal protection, timing-safe password comparison, and newline injection prevention.
 
 ## Current Limitations
 
 - Rachio cloud access is still required to start watering runs.
-- Notification delivery and summary delivery currently go through n8n-style webhooks; built-in SMTP delivery is not implemented.
-- Flow-meter-assisted calibration is scaffolded but requires an EveryDrop meter and is not wired into the main execution loop.
-- The test suite (112 tests) covers core logic, web UI, auth, AI integration, finance, and routing, but it is still not a substitute for a live smoke test against your own Rachio account, MQTT broker, and timers.
+- Notification delivery currently goes through n8n-style webhooks; built-in SMTP delivery is not implemented.
+- Flow-meter-assisted calibration is scaffolded but requires an EveryDrop meter.
+- Sentinel-2 satellite imagery requires a free Copernicus Data Space account.
+- CoAgMet stations are Colorado-specific; users outside Colorado would need an alternative reference ET source (gridMET works for all of CONUS but is not yet integrated).
+- The test suite (112 tests) covers core logic, web UI, auth, AI integration, finance, and routing, but is not a substitute for a live smoke test against your own hardware.
 
 ## Project Structure
 
-```
+```text
 src/
   cli.js              Entry point - run/water/status/cleanup commands
   web.js              Web UI bootstrap (server setup only)
@@ -195,7 +231,7 @@ src/
   mqtt.js              MQTT publisher for Home Assistant
   time.js              Local timezone helpers (America/Denver)
   log.js               Structured logger for systemd journal
-  yaml-loader.js       YAML zone and rate config loader
+  yaml-loader.js       YAML zone, rate, and soil config loader
   env.js               Environment file read/write helpers
   explain.js           Plain English decision explanations
   web-forms.js         Form data parsing and zone config serialization
@@ -208,33 +244,39 @@ src/
   web/
     auth.js            Session auth, CSRF tokens, rate limiting
     html.js            HTML helpers, layout shell, dark mode toggle
-    pages.js           Page renderers (dashboard, logs, zones, charts, briefing, settings, setup, login)
-    routes.js          HTTP handler, route dispatch, security headers
+    pages.js           Page renderers (dashboard, logs, zones, charts, briefing, satellite, settings, setup, login)
+    routes.js          HTTP handler, route dispatch, security headers, data APIs
   core/
     et.js              Evapotranspiration calculations (Hargreaves variant)
-    soil-moisture.js   Per-zone moisture balance tracking
+    soil-moisture.js   Per-zone moisture balance tracking with ET corrections
     rule-engine.js     5-stage decision engine
     soak.js            Smart soak cycle builder
-    finance.js         Tiered cost calculations with AWC support
+    finance.js         Tiered cost calculations with AWC support and breakdown
     tuning.js          Adaptive zone tuning with 14-day rolling analysis
+    data-integration.js  Orchestrates ET validation, soil config, and NDVI refresh
   api/
     rachio.js          Rachio API client (zones, profiles, commands, flow)
     ambient.js         Ambient Weather API client (current + live rain check)
-    openmeteo.js       OpenMeteo API client (archive + forecast)
+    openmeteo.js       OpenMeteo API client (archive + forecast + 2yr backfill)
+    coagmet.js         CoAgMet reference ET client (daily + 2yr backfill)
+    usda-soil.js       USDA Soil Data Access client (SSURGO survey by lat/lon)
+    ndvi.js            Sentinel-2 NDVI satellite client (stats + images + timeline)
     http.js            Shared fetch with retry and timeout
   db/
-    schema.sql         SQLite table definitions (13 tables)
+    schema.sql         SQLite table definitions (18 tables + 7 indexes)
     state.js           All database read/write operations
   public/
     styles.css         Cacheable CSS with light/dark themes
     theme.js           Dark mode toggle with localStorage persistence
     ai.js              Client-side chat, narrative expansion, briefing UI
+    satellite.js       Satellite NDVI timeline viewer
     manifest.json      PWA manifest
     sw.js              Service worker for offline support
     icon-192.svg       App icon (small)
     icon-512.svg       App icon (large)
 zones.yaml             Zone configuration (edit this for your yard)
 rates.yaml             Water rate schedule (edit for your utility)
+backfill.js            One-time historical data backfill script
 tests/                 112 tests covering core logic, finance, web UI, auth, AI, and routing
 deploy/
   smart-water.service  systemd oneshot service
@@ -258,7 +300,8 @@ eslint.config.js       ESLint flat config - catches real bugs, no style opinions
 - systemd (for scheduling)
 - n8n or another webhook receiver (optional, for notifications and summary delivery)
 - MQTT broker (optional, for Home Assistant)
-- Kimi API key from platform.moonshot.ai (optional, for AI features)
+- Kimi API key from platform.moonshot.ai (optional, for AI features - ~$0.30/year)
+- Copernicus Data Space account from dataspace.copernicus.eu (optional, free, for satellite imagery)
 
 ## Setup
 
@@ -276,9 +319,6 @@ node src/cli.js doctor
 
 # Optional: open the local browser UI at http://127.0.0.1:3000
 node src/cli.js web
-
-# Optional: run browser-first setup and guided editors
-# (the CLI and raw files still work if you prefer them)
 
 # Test in shadow mode (default - logs decisions, doesn't actuate)
 node src/cli.js run --shadow
@@ -315,6 +355,18 @@ echo 'AI_MODEL=kimi-k2-thinking' >> ~/.smart-water/.env
 
 AI costs approximately $0.30/year at typical usage (one daily summary call + occasional chat questions and narrative generation).
 
+### Satellite Imagery (Optional)
+
+```bash
+# Sign up for a free account at dataspace.copernicus.eu
+# Add to your env file:
+echo 'COPERNICUS_EMAIL=your-email@example.com' >> ~/.smart-water/.env
+echo 'COPERNICUS_PASSWORD=your-password' >> ~/.smart-water/.env
+
+# Enables the Satellite tab with NDVI vegetation health timeline
+# and feeds NDVI trends into advisor insights and weekly briefing
+```
+
 ### Water Rate Configuration
 
 ```bash
@@ -324,12 +376,54 @@ AI costs approximately $0.30/year at typical usage (one daily summary call + occ
 vi rates.yaml
 ```
 
+### Historical Data Backfill
+
+```bash
+# Backfill 2 years of weather and reference ET data
+# Run once after initial setup - takes about 30 seconds
+node backfill.js
+```
+
+This populates:
+
+- 730 days of OpenMeteo daily weather (temp, rain, solar, wind, FAO-56 reference ET)
+- 730 days of CoAgMet reference ET from the nearest station
+- USDA soil survey for your address (cached permanently)
+
+## API Endpoints
+
+**Data queries (GET):**
+
+| Endpoint | Description |
+| ---------- | ------------- |
+| `/api/status` | Current system status (JSON) |
+| `/api/charts` | Moisture history for charts |
+| `/api/soil?lat=&lon=` | USDA soil survey for a location |
+| `/api/reference-et` | Yesterday's CoAgMet reference ET |
+| `/api/ndvi` | NDVI vegetation statistics (90 days) |
+| `/api/ndvi/image?date=&mode=` | Satellite image PNG (ndvi or truecolor) |
+| `/api/history/weather?days=730` | Historical daily weather |
+| `/api/history/reference-et?days=730` | Historical reference ET |
+| `/api/history/ndvi?days=730` | Historical NDVI readings |
+| `/api/history/et-validation?days=730` | ET model vs reference comparison |
+| `/api/ai/status` | Whether AI features are enabled |
+
+**Actions (POST, CSRF-protected):**
+
+| Endpoint | Description |
+| ---------- | ------------- |
+| `/api/ai/chat` | Ask Your Yard natural language query |
+| `/api/ai/narrative` | Generate decision explanation |
+| `/api/ai/briefing` | Generate weekly intelligence briefing |
+| `/api/backfill/weather` | Backfill historical weather data |
+| `/api/backfill/reference-et` | Backfill CoAgMet reference ET |
+
 ## Commands
 
 **Getting started:**
 
 | Command | Description |
-|---------|-------------|
+| --------- | ------------- |
 | `node src/cli.js setup` | Interactive wizard - configures API keys and zones |
 | `node src/cli.js doctor` | Check system health, connectivity, and recent activity |
 | `node src/cli.js go-live` | Safety-checked switch from shadow to live mode |
@@ -339,13 +433,13 @@ vi rates.yaml
 **Daily operations:**
 
 | Command | Description |
-|---------|-------------|
+| --------- | ------------- |
 | `node src/cli.js run` | Run the hourly decision cycle |
 | `node src/cli.js run --shadow` | Shadow mode (log decisions, don't actuate) |
 | `node src/cli.js water` | Manual watering (overrides forecast/budget, respects safety) |
 | `node src/cli.js status` | Current moisture, usage, and last run |
 | `node src/cli.js status --json` | Machine-readable status for n8n/scripts |
-| `node src/cli.js web` | Local browser UI with dashboard, chat, history, charts, briefing, zones, settings |
+| `node src/cli.js web` | Local browser UI with all pages |
 | `node src/cli.js cleanup` | Remove data older than 90 days |
 
 ## Development
@@ -365,9 +459,9 @@ The codebase is organized into focused modules:
 
 - `src/web/` - auth, HTML helpers, page renderers, route dispatch (each under 500 lines)
 - `src/ai/` - chat, narratives, notifications, briefing, advisor (each a single-purpose module)
-- `src/core/` - ET calculations, soil moisture, rule engine, soak cycles, finance, tuning
-- `src/api/` - Rachio, Ambient Weather, OpenMeteo clients
-- `src/public/` - CSS with dark mode, theme toggle, AI client JS, PWA assets
+- `src/core/` - ET calculations, soil moisture, rule engine, soak cycles, finance, tuning, data integration
+- `src/api/` - Rachio, Ambient Weather, OpenMeteo, CoAgMet, USDA Soil, Sentinel-2 NDVI clients
+- `src/public/` - CSS with dark mode, theme toggle, AI client JS, satellite viewer, PWA assets
 
 ## Configuration
 
@@ -376,6 +470,8 @@ The codebase is organized into focused modules:
 - **System settings:** `src/config.js` - thresholds, schedule windows, emergency triggers (loaded from YAML files at startup)
 - **Secrets and location:** `~/.smart-water/.env` - API keys, MQTT broker, notification webhook, `LAT`, `LON`, `LOCATION_TIMEZONE`
 - **AI features:** Set `AI_API_KEY`, `AI_API_BASE_URL`, and `AI_MODEL` in your env file
+- **Satellite imagery:** Set `COPERNICUS_EMAIL` and `COPERNICUS_PASSWORD` in your env file
+- **CoAgMet station:** Set `COAGMET_STATION` to override the default nearest station (default: `den01`)
 - **Optional web auth:** Set `WEB_UI_PASSWORD` and restart the web UI for browser sign-in on top of localhost binding
 - **See** `.env.example` for all available environment variables
 
