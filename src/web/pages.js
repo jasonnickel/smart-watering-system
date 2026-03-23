@@ -399,21 +399,61 @@ function renderWeatherBadge(ambientCache) {
   }
 }
 
-function renderForecastCards(forecastCache) {
-  if (!forecastCache) {
-    return '';
+function forecastDayLabel(dateStr) {
+  if (!dateStr) return '?';
+  try {
+    const d = new Date(dateStr + 'T12:00:00');
+    const today = new Date();
+    today.setHours(12, 0, 0, 0);
+    const diff = Math.round((d - today) / 86400000);
+    if (diff === 0) return 'Today';
+    if (diff === 1) return 'Tomorrow';
+    return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+  } catch {
+    return dateStr.slice(5);
   }
+}
+
+function forecastCondition(day) {
+  const rain = day.precipitation ?? 0;
+  const humidity = day.humidity ?? 50;
+  const solar = day.solarRadiation ?? 10;
+  if (rain >= 0.25) return { label: 'Rainy', icon: '\u{1F327}\uFE0F', tone: 'rain' };
+  if (rain >= 0.05) return { label: 'Showers', icon: '\u{1F326}\uFE0F', tone: 'rain' };
+  if (humidity >= 75 && solar < 12) return { label: 'Overcast', icon: '\u2601\uFE0F', tone: 'cloudy' };
+  if (solar >= 20) return { label: 'Sunny', icon: '\u2600\uFE0F', tone: 'sunny' };
+  return { label: 'Partly Cloudy', icon: '\u26C5', tone: 'cloudy' };
+}
+
+function renderForecastCards(forecastCache) {
+  if (!forecastCache) return '';
   try {
     const forecast = JSON.parse(forecastCache.data_json);
-    return `<div class="grid grid-2">
-      ${forecast.slice(0, 4).map(day => `<div class="card">
-        <h3>${escapeHtml(day.date?.slice(5) || '?')}</h3>
-        <div class="stat-list">
-          <div class="stat"><span>High</span><span>${escapeHtml(day.tmax?.toFixed(0) || '?')}F</span></div>
-          <div class="stat"><span>Low</span><span>${escapeHtml(day.tmin?.toFixed(0) || '?')}F</span></div>
-          <div class="stat"><span>Rain</span><span>${escapeHtml(day.precipitation?.toFixed(2) || '0.00')}"</span></div>
-        </div>
-      </div>`).join('')}
+    return `<div class="forecast-grid">
+      ${forecast.slice(0, 4).map((day, i) => {
+        const cond = forecastCondition(day);
+        const high = day.tmax?.toFixed(0) || '?';
+        const low = day.tmin?.toFixed(0) || '?';
+        const rain = day.precipitation ?? 0;
+        const humidity = day.humidity?.toFixed(0) || '?';
+        const label = forecastDayLabel(day.date);
+        return `<div class="forecast-card forecast-${cond.tone}${i === 0 ? ' forecast-today' : ''}">
+          <div class="forecast-header">
+            <span class="forecast-day">${escapeHtml(label)}</span>
+            <span class="forecast-icon">${cond.icon}</span>
+          </div>
+          <div class="forecast-temps">
+            <span class="forecast-high">${escapeHtml(high)}<small>F</small></span>
+            <span class="forecast-sep">/</span>
+            <span class="forecast-low">${escapeHtml(low)}<small>F</small></span>
+          </div>
+          <div class="forecast-condition">${escapeHtml(cond.label)}</div>
+          <div class="forecast-details">
+            <span>${rain > 0 ? `${escapeHtml(rain.toFixed(2))}" rain` : 'No rain'}</span>
+            <span>${escapeHtml(humidity)}% RH</span>
+          </div>
+        </div>`;
+      }).join('')}
     </div>`;
   } catch {
     return '';
