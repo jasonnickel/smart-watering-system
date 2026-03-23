@@ -71,6 +71,7 @@ export function layout(title, content, activeTab, options = {}) {
     { id: 'logs', label: 'Run History', path: '/logs' },
     { id: 'zones', label: 'Zones', path: '/zones' },
     { id: 'charts', label: 'Charts', path: '/charts' },
+    { id: 'briefing', label: 'Briefing', path: '/briefing' },
     { id: 'settings', label: 'Settings', path: '/settings' },
     { id: 'setup', label: 'Guided Setup', path: '/setup' },
   ];

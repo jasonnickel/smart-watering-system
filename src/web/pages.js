@@ -695,3 +695,18 @@ export function setupPage(query, csrf) {
 export function chartsPage(csrf) {
   return layout('Charts', chartsPageContent(), 'charts', { authEnabled: authEnabled(), csrf });
 }
+
+export function briefingPage(csrf) {
+  const aiEnabled = aiNarrationEnabled();
+  return layout('Briefing', `
+    <div class="card">
+      <h2>Weekly Intelligence Briefing</h2>
+      <p class="helper">Multi-period trend analysis with week-over-week, month-over-month, seasonal, and year-over-year comparison. The full briefing is emailed every Sunday at 7am. Generate one on-demand below.</p>
+      ${aiEnabled ? `<div class="actions" style="margin-bottom:16px">
+        <button id="generate-briefing" class="btn btn-primary" type="button">Generate Briefing Now</button>
+      </div>` : '<p class="helper" style="color:var(--warning)">Set AI_API_KEY in your env file to enable AI-powered briefing narratives.</p>'}
+      <div id="briefing-output"></div>
+    </div>
+    ${csrfField(csrf)}
+  `, 'briefing', { authEnabled: authEnabled(), csrf });
+}

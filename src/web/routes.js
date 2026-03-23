@@ -22,6 +22,7 @@ import { log } from '../log.js';
 import { aiNarrationEnabled } from '../ai/advisor.js';
 import { askYard } from '../ai/chat.js';
 import { generateNarrative } from '../ai/narratives.js';
+import { buildBriefingContext, generateBriefingNarrative } from '../ai/briefing.js';
 import {
   initAuth,
   authEnabled, hasValidSession, createSession, clearSession,
@@ -31,7 +32,7 @@ import {
 } from './auth.js';
 import {
   loginPage, dashboardPage, logsPage, zonesPage,
-  settingsPage, setupPage, chartsPage,
+  settingsPage, setupPage, chartsPage, briefingPage,
 } from './pages.js';
 
 // -- Constants ---------------------------------------------------------------
@@ -300,6 +301,7 @@ export function createRequestHandler({ host, port, appRoot, envPath, zonesPath, 
         if (path === '/settings') return serve(res, settingsPage(url.searchParams, csrf));
         if (path === '/setup') return serve(res, setupPage(url.searchParams, csrf));
         if (path === '/charts') return serve(res, chartsPage(csrf));
+        if (path === '/briefing') return serve(res, briefingPage(csrf));
         if (path === '/api/status') return serveJSON(res, getStatusJSON(localDateStr()));
         if (path === '/api/charts') return serveJSON(res, getMoistureHistory(14));
         if (path === '/api/ai/status') return serveJSON(res, { enabled: aiNarrationEnabled() });
@@ -387,6 +389,24 @@ export function createRequestHandler({ host, port, appRoot, envPath, zonesPath, 
             return serveJSON(res, { narrative: result?.narrative || null, reasoning: result?.reasoning || null });
           } catch (err) {
             log(0, `AI narrative error: ${err.message}`);
+            return serveJSON(res, { error: 'AI request failed' }, 502);
+          }
+        }
+
+        if (path === '/api/ai/briefing') {
+          if (!aiNarrationEnabled()) {
+            return serveJSON(res, { error: 'AI not configured' }, 503);
+          }
+          try {
+            const context = buildBriefingContext();
+            const narrative = await generateBriefingNarrative(context);
+            return serveJSON(res, {
+              narrative: narrative?.content || null,
+              reasoning: narrative?.reasoning || null,
+              context,
+            });
+          } catch (err) {
+            log(0, `AI briefing error: ${err.message}`);
             return serveJSON(res, { error: 'AI request failed' }, 502);
           }
         }

@@ -1,0 +1,12 @@
+[Unit]
+Description=Smart Water System - Weekly Intelligence Briefing
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/smart-water
+ExecStart=/usr/bin/node src/briefing-runner.js
+EnvironmentFile=/root/.smart-water/.env
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=smart-water-briefing

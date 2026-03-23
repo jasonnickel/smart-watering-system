@@ -3,6 +3,7 @@
   document.addEventListener('DOMContentLoaded', function () {
     initChat();
     initNarratives();
+    initBriefing();
   });
 
   // -- Ask Your Yard chat ---------------------------------------------------
@@ -101,6 +102,66 @@
             btn.textContent = 'Explain';
           });
       });
+    });
+  }
+
+  // -- Weekly briefing -------------------------------------------------------
+
+  function initBriefing() {
+    var btn = document.getElementById('generate-briefing');
+    if (!btn) return;
+
+    btn.addEventListener('click', function () {
+      btn.disabled = true;
+      btn.textContent = 'Analyzing trends...';
+      var output = document.getElementById('briefing-output');
+      output.innerHTML = '<p class="helper">Pulling data from all time periods and generating AI analysis. This takes 15-30 seconds...</p>';
+
+      var csrf = document.querySelector('input[name="_csrf"]');
+      var body = new URLSearchParams();
+      if (csrf) body.set('_csrf', csrf.value);
+
+      fetch('/api/ai/briefing', { method: 'POST', body: body })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          if (data.error) {
+            output.innerHTML = '<p class="helper" style="color:var(--danger)">' + escapeHtml(data.error) + '</p>';
+            return;
+          }
+          var html = '';
+          if (data.narrative) {
+            html += '<div class="chat-answer" style="margin-bottom:16px">' + escapeHtml(data.narrative).replace(/\n/g, '<br>') + '</div>';
+          }
+          if (data.context) {
+            var p = data.context.periods;
+            var trend = data.context.weekTrend;
+            var arrows = { increasing: '\u25B2', decreasing: '\u25BC', stable: '\u25AC' };
+            html += '<div class="card"><h3>Usage Trend ' + (arrows[trend.direction] || '') + ' ' + trend.direction + '</h3>';
+            html += '<p>This week: ' + trend.thisWeekGallons.toFixed(0) + ' gal | Last week: ' + trend.lastWeekGallons.toFixed(0) + ' gal</p></div>';
+            html += '<div class="table-wrapper"><table><thead><tr><th>Period</th><th>Gallons</th><th>Cost</th><th>Decisions</th><th>Skip %</th><th>Rain</th></tr></thead><tbody>';
+            [p.week, p.month, p.quarter, p.season].forEach(function (period) {
+              html += '<tr><td>' + period.label + '</td><td>' + period.gallons.toFixed(0) + '</td><td>$' + period.cost.toFixed(2) + '</td><td>' + period.waterDecisions + 'W / ' + period.skipDecisions + 'S</td><td>' + period.skipRate + '%</td><td>' + period.totalRainInches.toFixed(2) + '"</td></tr>';
+            });
+            html += '</tbody></table></div>';
+            var yoy = data.context.yoyComparison;
+            if (yoy && yoy.lastYear && yoy.lastYear.totalDecisions > 0) {
+              html += '<div class="card"><h3>Year Over Year</h3>';
+              html += '<p>Last year same period: ' + yoy.lastYear.gallons.toFixed(0) + ' gal / $' + yoy.lastYear.cost.toFixed(2) + '</p>';
+              html += '<p>Delta: ' + (yoy.gallonsDelta > 0 ? '+' : '') + yoy.gallonsDelta.toFixed(0) + ' gal / ' + (yoy.costDelta > 0 ? '+' : '') + '$' + yoy.costDelta.toFixed(2) + '</p></div>';
+            }
+          }
+          if (data.reasoning) {
+            html += '<details class="chat-reasoning"><summary>View AI reasoning</summary><p class="small">' + escapeHtml(data.reasoning) + '</p></details>';
+          }
+          output.innerHTML = html;
+        })
+        .catch(function () {
+          output.innerHTML = '<p class="helper" style="color:var(--danger)">Request failed. Check your connection.</p>';
+        })
+        .finally(function () {
+          btn.disabled = false;
+          btn.textContent = 'Generate Briefing Now';
+        });
     });
   }
 
