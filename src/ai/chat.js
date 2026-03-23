@@ -75,7 +75,8 @@ LAST DECISION: ${lastRun ? `${lastRun.decision} - ${lastRun.reason} (${lastRun.t
 7-DAY ACTIVITY: ${decisions.length} decisions, ${waterRuns.length} watered, ${skipRuns.length} skipped${skipReasons ? ` (${skipReasons})` : ''}
 USAGE: Today ${todayUsage?.gallons?.toFixed(0) || 0} gal/$${todayUsage?.cost?.toFixed(2) || '0.00'} | Month ${finance?.monthly_gallons?.toFixed(0) || 0} gal/$${finance?.monthly_cost?.toFixed(2) || '0.00'} | Cycle ${finance?.cumulative_gallons?.toFixed(0) || 0} gal
 DISCREPANCIES: ${discrepancies.length} in last 48h
-INSIGHTS: ${insightLines}`;
+INSIGHTS: ${insightLines}
+DATA SOURCES: Ambient Weather (live), OpenMeteo (forecast/archive), USDA soil survey (soil properties), CoAgMet (reference ET cross-validation), Sentinel-2 NDVI (vegetation health satellite imagery)`;
 }
 
 export async function askYard(question) {

@@ -23,6 +23,10 @@ import { aiNarrationEnabled } from '../ai/advisor.js';
 import { askYard } from '../ai/chat.js';
 import { generateNarrative } from '../ai/narratives.js';
 import { buildBriefingContext, generateBriefingNarrative } from '../ai/briefing.js';
+import CONFIG from '../config.js';
+import { getSoilProfile } from '../api/usda-soil.js';
+import { getYesterdayReferenceET } from '../api/coagmet.js';
+import { ndviEnabled, getNDVIStats, getNDVIImage } from '../api/ndvi.js';
 import {
   initAuth,
   authEnabled, hasValidSession, createSession, clearSession,
@@ -305,6 +309,57 @@ export function createRequestHandler({ host, port, appRoot, envPath, zonesPath, 
         if (path === '/api/status') return serveJSON(res, getStatusJSON(localDateStr()));
         if (path === '/api/charts') return serveJSON(res, getMoistureHistory(14));
         if (path === '/api/ai/status') return serveJSON(res, { enabled: aiNarrationEnabled() });
+
+        // Data source API endpoints
+        if (path === '/api/soil') {
+          const lat = parseFloat(url.searchParams.get('lat') || CONFIG.location.lat);
+          const lon = parseFloat(url.searchParams.get('lon') || CONFIG.location.lon);
+          try {
+            const profile = await getSoilProfile(lat, lon);
+            return serveJSON(res, { profile });
+          } catch (err) {
+            return serveJSON(res, { error: err.message }, 502);
+          }
+        }
+
+        if (path === '/api/reference-et') {
+          try {
+            const ref = await getYesterdayReferenceET();
+            return serveJSON(res, { referenceET: ref });
+          } catch (err) {
+            return serveJSON(res, { error: err.message }, 502);
+          }
+        }
+
+        if (path === '/api/ndvi') {
+          if (!ndviEnabled()) return serveJSON(res, { error: 'NDVI not configured' }, 503);
+          const lat = parseFloat(url.searchParams.get('lat') || CONFIG.location.lat);
+          const lon = parseFloat(url.searchParams.get('lon') || CONFIG.location.lon);
+          try {
+            const stats = await getNDVIStats(lat, lon);
+            return serveJSON(res, { stats });
+          } catch (err) {
+            return serveJSON(res, { error: err.message }, 502);
+          }
+        }
+
+        if (path === '/api/ndvi/image') {
+          if (!ndviEnabled()) { res.writeHead(503); res.end('NDVI not configured'); return; }
+          const lat = parseFloat(url.searchParams.get('lat') || CONFIG.location.lat);
+          const lon = parseFloat(url.searchParams.get('lon') || CONFIG.location.lon);
+          const date = url.searchParams.get('date') || '';
+          try {
+            const imageOpts = date ? { date } : {};
+            const buffer = await getNDVIImage(lat, lon, imageOpts);
+            res.writeHead(200, { 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=86400' });
+            res.end(buffer);
+            return;
+          } catch (err) {
+            res.writeHead(502);
+            res.end(err.message);
+            return;
+          }
+        }
 
         // Static assets (PWA, CSS, theme toggle)
         if (path === '/manifest.json' || path === '/sw.js' || path === '/icon-192.svg' || path === '/icon-512.svg' || path === '/styles.css' || path === '/theme.js' || path === '/ai.js') {
