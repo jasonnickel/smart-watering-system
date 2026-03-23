@@ -1,7 +1,7 @@
 // Service Worker for Smart Water PWA
 // Minimal - just enables "Add to Home Screen" and basic offline shell
 
-const CACHE_NAME = 'smart-water-v6';
+const CACHE_NAME = 'smart-water-v7';
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();

@@ -74,7 +74,7 @@ export async function getDailyET(options = {}) {
 
   let url = `${BASE_URL}/daily/${station}.json`;
   const params = new URLSearchParams();
-  params.set('fields', 'etrASCE,etoASCE,tMax,tMin,tAvg,rhMax,rhMin,solarRad,windSpeed,precip');
+  params.set('fields', 'etrASCE,etoASCE,tMax,tMin,tAvg,rhMax,rhMin,solarRad,windSpeed10m,precip');
   if (options.from) params.set('from', options.from);
   if (options.to) params.set('to', options.to);
   url += `?${params}`;
@@ -101,7 +101,7 @@ export async function getDailyET(options = {}) {
       humidityMax: parseSafe(data.rhMax?.[i]),
       humidityMin: parseSafe(data.rhMin?.[i]),
       solarRadiation: parseSafe(data.solarRad?.[i]),
-      windSpeed: parseSafe(data.windSpeed?.[i]),
+      windSpeed: parseSafe(data.windSpeed10m?.[i]),
       precipitation: parseSafe(data.precip?.[i]),
     })).filter(r => r.referenceETo !== null);
 

@@ -372,8 +372,10 @@ export function createRequestHandler({ host, port, appRoot, envPath, zonesPath, 
           const lat = parseFloat(url.searchParams.get('lat') || CONFIG.location.lat);
           const lon = parseFloat(url.searchParams.get('lon') || CONFIG.location.lon);
           const date = url.searchParams.get('date') || '';
+          const mode = url.searchParams.get('mode') || 'ndvi';
           try {
-            const imageOpts = date ? { date } : {};
+            const imageOpts = { mode };
+            if (date) imageOpts.date = date;
             const buffer = await getNDVIImage(lat, lon, imageOpts);
             res.writeHead(200, { 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=86400' });
             res.end(buffer);

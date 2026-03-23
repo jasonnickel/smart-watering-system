@@ -10,6 +10,7 @@
 
   function initSatellite(container) {
     var viewSelect = document.getElementById('sat-view');
+    var modeSelect = document.getElementById('sat-mode');
     var loadBtn = document.getElementById('sat-load');
     var gallery = document.getElementById('sat-gallery');
     var chart = document.getElementById('sat-chart');
@@ -19,11 +20,12 @@
 
     loadBtn.addEventListener('click', function () {
       var view = viewSelect ? viewSelect.value : 'month';
-      loadTimeline(view, gallery, chart, status, loadBtn);
+      var mode = modeSelect ? modeSelect.value : 'ndvi';
+      loadTimeline(view, mode, gallery, chart, status, loadBtn);
     });
   }
 
-  function loadTimeline(view, gallery, chart, status, btn) {
+  function loadTimeline(view, mode, gallery, chart, status, btn) {
     btn.disabled = true;
     btn.textContent = 'Loading satellite imagery...';
     status.textContent = '';
@@ -80,7 +82,7 @@
       };
       // Stagger requests to avoid hammering the API
       setTimeout(function () {
-        img.src = '/api/ndvi/image?date=' + date;
+        img.src = '/api/ndvi/image?date=' + date + '&mode=' + mode;
       }, index * 800);
     });
   }
