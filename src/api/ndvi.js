@@ -14,17 +14,51 @@ import { saveNDVIReading } from '../db/state.js';
 const TOKEN_URL = 'https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token';
 const STATS_URL = 'https://sh.dataspace.copernicus.eu/api/v1/statistics';
 const PROCESS_URL = 'https://sh.dataspace.copernicus.eu/api/v1/process';
+const ARCGIS_EXPORT_URL = 'https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export';
+const DRAPP_2022_EXPORT_URL = 'https://gisportal.jeffco.us/image/rest/services/DRAPP/DRAPP2022/ImageServer/exportImage';
 const TIMEOUT_MS = 30000;
+
+const ORTHO_PROVIDERS = [
+  {
+    id: 'drapp-2022',
+    label: 'DRAPP 2022',
+    exportUrl: DRAPP_2022_EXPORT_URL,
+    format: 'jpgpng',
+    extent3857: {
+      xmin: -11734307.2739,
+      ymin: 4738616.360363497,
+      xmax: -11692278.317842089,
+      ymax: 4855784.610299997,
+    },
+  },
+  {
+    id: 'world-imagery',
+    label: 'World Imagery',
+    exportUrl: ARCGIS_EXPORT_URL,
+    format: 'jpg',
+    extent3857: null,
+  },
+];
 
 // NDVI evalscript for statistics
 const NDVI_STATS_SCRIPT = `//VERSION=3
 function setup() {
-  return { input: ["B04", "B08", "SCL"], output: { id: "ndvi", bands: 1 } };
+  return {
+    input: ["B04", "B08", "SCL", "dataMask"],
+    output: [
+      { id: "ndvi", bands: 1 },
+      { id: "dataMask", bands: 1 }
+    ]
+  };
 }
 function evaluatePixel(s) {
-  if (s.SCL === 3 || s.SCL === 8 || s.SCL === 9 || s.SCL === 10) return [NaN];
+  var valid = s.dataMask;
+  if (s.SCL === 3 || s.SCL === 8 || s.SCL === 9 || s.SCL === 10) valid = 0;
   var ndvi = (s.B08 - s.B04) / (s.B08 + s.B04);
-  return [ndvi];
+  return {
+    ndvi: [valid ? ndvi : NaN],
+    dataMask: [valid]
+  };
 }`;
 
 // NDVI evalscript for visual image - blends true color with NDVI color overlay
@@ -49,6 +83,28 @@ function evaluatePixel(s) {
   return [Math.min(1, r), Math.min(1, g), Math.min(1, b)];
 }`;
 
+// Monthly health overlay with transparency so it can sit on a sharp orthophoto.
+const NDVI_OVERLAY_SCRIPT = `//VERSION=3
+function setup() {
+  return {
+    input: ["B04", "B08", "SCL", "dataMask"],
+    output: { bands: 4, sampleType: "AUTO" }
+  };
+}
+function evaluatePixel(s) {
+  if (s.dataMask === 0) return [0, 0, 0, 0];
+  if (s.SCL === 3 || s.SCL === 8 || s.SCL === 9 || s.SCL === 10) return [0, 0, 0, 0];
+
+  var ndvi = (s.B08 - s.B04) / (s.B08 + s.B04);
+  if (!isFinite(ndvi) || ndvi < 0.08) return [0, 0, 0, 0];
+
+  if (ndvi < 0.18) return [0.70, 0.42, 0.16, 0.22];
+  if (ndvi < 0.30) return [0.94, 0.76, 0.18, 0.34];
+  if (ndvi < 0.45) return [0.52, 0.78, 0.18, 0.46];
+  if (ndvi < 0.60) return [0.20, 0.68, 0.16, 0.56];
+  return [0.08, 0.50, 0.12, 0.64];
+}`;
+
 // True color satellite image - natural appearance with contrast enhancement
 const TRUE_COLOR_SCRIPT = `//VERSION=3
 function setup() {
@@ -69,6 +125,7 @@ function evaluatePixel(s) {
 
 const SCRIPTS = {
   ndvi: NDVI_IMAGE_SCRIPT,
+  overlay: NDVI_OVERLAY_SCRIPT,
   truecolor: TRUE_COLOR_SCRIPT,
 };
 
@@ -121,6 +178,25 @@ function boundingBox(lat, lon, sizeMeters = 100) {
   ];
 }
 
+function normalizeTimeBound(value, endOfDay = false) {
+  if (!value) return null;
+  if (value.includes('T')) return value;
+  return `${value}${endOfDay ? 'T23:59:59Z' : 'T00:00:00Z'}`;
+}
+
+function toWebMercator(lat, lon) {
+  const x = lon * 20037508.34 / 180;
+  const y = Math.log(Math.tan((90 + lat) * Math.PI / 360)) / (Math.PI / 180) * 20037508.34 / 180;
+  return { x, y };
+}
+
+function providerCovers(provider, lat, lon) {
+  if (!provider.extent3857) return true;
+  const point = toWebMercator(lat, lon);
+  const extent = provider.extent3857;
+  return point.x >= extent.xmin && point.x <= extent.xmax && point.y >= extent.ymin && point.y <= extent.ymax;
+}
+
 /**
  * Get NDVI statistics for a location over a time range.
  * Returns an array of period values (mean NDVI per aggregation interval).
@@ -132,6 +208,7 @@ function boundingBox(lat, lon, sizeMeters = 100) {
  * @param {string} [options.to] - End date ISO (default: today)
  * @param {string} [options.interval] - Aggregation interval (default: 'P16D' = 16 days)
  * @param {number} [options.maxCloudPct] - Max cloud coverage percent (default: 20)
+ * @param {string} [options.lastIntervalBehavior] - One of SKIP, SHORTEN, EXTEND
  * @returns {Promise<Array<{from: string, to: string, mean: number, samples: number}>>}
  */
 export async function getNDVIStats(lat, lon, options = {}) {
@@ -141,10 +218,12 @@ export async function getNDVIStats(lat, lon, options = {}) {
 
   const token = await getToken();
   const bbox = boundingBox(lat, lon);
-  const from = options.from || new Date(Date.now() - 90 * 86400000).toISOString().slice(0, 10) + 'T00:00:00Z';
-  const to = options.to || new Date().toISOString().slice(0, 10) + 'T23:59:59Z';
+  const from = normalizeTimeBound(options.from) || new Date(Date.now() - 90 * 86400000).toISOString().slice(0, 10) + 'T00:00:00Z';
+  const to = normalizeTimeBound(options.to, true) || new Date().toISOString().slice(0, 10) + 'T23:59:59Z';
   const interval = options.interval || 'P16D';
   const maxCloud = options.maxCloudPct ?? 20;
+  const persist = options.persist !== false;
+  const lastIntervalBehavior = options.lastIntervalBehavior || undefined;
   const timeoutSignal = AbortSignal.timeout ? AbortSignal.timeout(TIMEOUT_MS) : undefined;
 
   const response = await fetch(STATS_URL, {
@@ -161,6 +240,7 @@ export async function getNDVIStats(lat, lon, options = {}) {
       aggregation: {
         timeRange: { from, to },
         aggregationInterval: { of: interval },
+        ...(lastIntervalBehavior ? { lastIntervalBehavior } : {}),
         evalscript: NDVI_STATS_SCRIPT,
         resx: 10,
         resy: 10,
@@ -185,36 +265,87 @@ export async function getNDVIStats(lat, lon, options = {}) {
       max: stats?.max ?? null,
       samples: stats?.sampleCount ?? 0,
     };
-  }).filter(r => r.mean !== null && r.samples > 0);
+  }).filter(r => Number.isFinite(r.mean) && r.samples > 0);
 
-  // Persist to database for historical tracking
-  for (const r of results) {
-    try { saveNDVIReading(lat, lon, r); } catch { /* DB may not be initialized */ }
+  // Persist only canonical/background reads. Ad hoc UI ranges should not pollute history.
+  if (persist) {
+    for (const r of results) {
+      try { saveNDVIReading(lat, lon, r); } catch { /* DB may not be initialized */ }
+    }
   }
 
   log(1, `NDVI: ${results.length} periods for ${lat}, ${lon}`);
   return results;
 }
 
+async function getTrueColorHouseImage(lat, lon, options = {}) {
+  const sizeMeters = options.sizeMeters || 100;
+  const bbox = boundingBox(lat, lon, sizeMeters);
+  const widthPx = options.widthPx || 800;
+  const heightPx = options.heightPx || widthPx;
+  const timeoutSignal = AbortSignal.timeout ? AbortSignal.timeout(TIMEOUT_MS) : undefined;
+
+  const candidates = ORTHO_PROVIDERS.filter(provider => providerCovers(provider, lat, lon));
+  let lastError = null;
+
+  for (const provider of candidates) {
+    const url = `${provider.exportUrl}?${new URLSearchParams({
+      bbox: bbox.join(','),
+      bboxSR: '4326',
+      imageSR: '4326',
+      size: `${widthPx},${heightPx}`,
+      format: provider.format,
+      f: 'image',
+    })}`;
+
+    try {
+      const response = await fetch(url, {
+        headers: { Accept: 'image/jpeg,image/png;q=0.8,*/*;q=0.5' },
+        signal: timeoutSignal,
+      });
+
+      if (!response.ok) {
+        const body = await response.text();
+        throw new Error(`${provider.label} returned ${response.status}: ${body.slice(0, 200)}`);
+      }
+
+      const buffer = Buffer.from(await response.arrayBuffer());
+      const contentType = response.headers.get('content-type') || 'image/jpeg';
+      log(1, `True color image: ${buffer.length} bytes from ${provider.label} for ${lat}, ${lon}`);
+      return { buffer, contentType };
+    } catch (err) {
+      lastError = err;
+      log(1, `True color provider failed (${provider.label}): ${err.message}`);
+    }
+  }
+
+  throw lastError || new Error('No orthophoto provider available for this location');
+}
+
 /**
- * Get an NDVI satellite image (PNG) for a location at a specific date.
- * Returns a Buffer of PNG image data suitable for serving to the browser.
+ * Get a vegetation/imagery image for a location.
+ * True color uses high-resolution aerial imagery centered on the configured house.
+ * NDVI uses Sentinel-2 and remains much coarser (10 m pixels).
  *
  * @param {number} lat
  * @param {number} lon
  * @param {object} options
  * @param {string} [options.date] - Target date YYYY-MM-DD (searches +/- 10 days for clear imagery)
- * @param {number} [options.sizeMeters] - Image extent in meters (default: 200)
- * @param {number} [options.widthPx] - Image width in pixels (default: 512)
- * @returns {Promise<Buffer>} PNG image data
+ * @param {number} [options.sizeMeters] - Image extent in meters
+ * @param {number} [options.widthPx] - Image width in pixels
+ * @returns {Promise<{buffer: Buffer, contentType: string}>}
  */
 export async function getNDVIImage(lat, lon, options = {}) {
+  if (options.mode === 'truecolor') {
+    return getTrueColorHouseImage(lat, lon, options);
+  }
+
   if (!ndviEnabled()) {
     throw new Error('NDVI not configured: set COPERNICUS_EMAIL and COPERNICUS_PASSWORD');
   }
 
   const token = await getToken();
-  const sizeMeters = options.sizeMeters || 800;
+  const sizeMeters = options.sizeMeters || 260;
   const bbox = boundingBox(lat, lon, sizeMeters);
   const widthPx = options.widthPx || 800;
   const heightPx = widthPx;
@@ -259,7 +390,7 @@ export async function getNDVIImage(lat, lon, options = {}) {
 
   const buffer = Buffer.from(await response.arrayBuffer());
   log(1, `NDVI image: ${buffer.length} bytes for ${lat}, ${lon} near ${date}`);
-  return buffer;
+  return { buffer, contentType: 'image/png' };
 }
 
 /**

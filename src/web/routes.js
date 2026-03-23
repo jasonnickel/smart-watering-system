@@ -28,6 +28,7 @@ import { aiNarrationEnabled } from '../ai/advisor.js';
 import { askYard } from '../ai/chat.js';
 import { generateNarrative } from '../ai/narratives.js';
 import { buildBriefingContext, generateBriefingNarrative } from '../ai/briefing.js';
+import { buildSatelliteAnalysis } from '../ai/satellite.js';
 import CONFIG from '../config.js';
 import { getSoilProfile } from '../api/usda-soil.js';
 import { getYesterdayReferenceET, backfillReferenceET } from '../api/coagmet.js';
@@ -41,7 +42,7 @@ import {
 } from './auth.js';
 import {
   loginPage, dashboardPage, logsPage, zonesPage,
-  settingsPage, setupPage, chartsPage, briefingPage, satellitePage,
+  settingsPage, chartsPage, briefingPage, satellitePage,
 } from './pages.js';
 
 // -- Constants ---------------------------------------------------------------
@@ -174,6 +175,19 @@ function requireAuth(req, res, url) {
 
 function getClientIP(req) {
   return req.socket?.remoteAddress || 'unknown';
+}
+
+function parsePositiveNumber(rawValue, fallback, { min = 0, max = Infinity } = {}) {
+  if (rawValue == null || rawValue === '') return fallback;
+  const value = Number(rawValue);
+  if (!Number.isFinite(value)) return fallback;
+  return Math.min(Math.max(value, min), max);
+}
+
+function parseLastIntervalBehavior(rawValue) {
+  if (!rawValue) return undefined;
+  const value = String(rawValue).toUpperCase();
+  return ['SKIP', 'SHORTEN', 'EXTEND'].includes(value) ? value : undefined;
 }
 
 // -- Form body readers -------------------------------------------------------
@@ -309,7 +323,7 @@ export function createRequestHandler({ host, port, appRoot, envPath, zonesPath, 
         if (path === '/logs') return serve(res, logsPage(url.searchParams, csrf));
         if (path === '/zones') return serve(res, zonesPage(url.searchParams, zonesPath, csrf));
         if (path === '/settings') return serve(res, settingsPage(url.searchParams, csrf));
-        if (path === '/setup') return serve(res, setupPage(url.searchParams, csrf));
+        if (path === '/setup') return redirect(res, '/settings');
         if (path === '/charts') return serve(res, chartsPage(csrf));
         if (path === '/briefing') return serve(res, briefingPage(csrf));
         if (path === '/satellite') return serve(res, satellitePage(csrf));
@@ -322,7 +336,9 @@ export function createRequestHandler({ host, port, appRoot, envPath, zonesPath, 
         }
         if (path === '/api/history/ndvi') {
           const days = parseInt(url.searchParams.get('days') || '180', 10);
-          return serveJSON(res, { data: getNDVIHistory(Math.min(days, 730)) });
+          const lat = parseFloat(url.searchParams.get('lat') || CONFIG.location.lat);
+          const lon = parseFloat(url.searchParams.get('lon') || CONFIG.location.lon);
+          return serveJSON(res, { data: getNDVIHistory(Math.min(days, 730), lat, lon) });
         }
         if (path === '/api/history/et-validation') {
           const days = parseInt(url.searchParams.get('days') || '30', 10);
@@ -360,25 +376,65 @@ export function createRequestHandler({ host, port, appRoot, envPath, zonesPath, 
           const lat = parseFloat(url.searchParams.get('lat') || CONFIG.location.lat);
           const lon = parseFloat(url.searchParams.get('lon') || CONFIG.location.lon);
           try {
-            const stats = await getNDVIStats(lat, lon);
+            const from = url.searchParams.get('from') || undefined;
+            const to = url.searchParams.get('to') || undefined;
+            const interval = url.searchParams.get('interval') || undefined;
+            const maxCloudPct = parsePositiveNumber(url.searchParams.get('max_cloud_pct'), 20, { min: 0, max: 100 });
+            const lastIntervalBehavior = parseLastIntervalBehavior(url.searchParams.get('last_interval_behavior'));
+            const stats = await getNDVIStats(lat, lon, {
+              from,
+              to,
+              interval,
+              maxCloudPct,
+              lastIntervalBehavior,
+              persist: false,
+            });
             return serveJSON(res, { stats });
           } catch (err) {
             return serveJSON(res, { error: err.message }, 502);
           }
         }
 
+        if (path === '/api/satellite/analysis') {
+          if (!ndviEnabled()) return serveJSON(res, { error: 'NDVI not configured' }, 503);
+          const lat = parseFloat(url.searchParams.get('lat') || CONFIG.location.lat);
+          const lon = parseFloat(url.searchParams.get('lon') || CONFIG.location.lon);
+          try {
+            const from = url.searchParams.get('from') || undefined;
+            const to = url.searchParams.get('to') || undefined;
+            const interval = url.searchParams.get('interval') || undefined;
+            const maxCloudPct = parsePositiveNumber(url.searchParams.get('max_cloud_pct'), 20, { min: 0, max: 100 });
+            const lastIntervalBehavior = parseLastIntervalBehavior(url.searchParams.get('last_interval_behavior'))
+              || (interval === 'P1M' ? 'SHORTEN' : undefined);
+            const stats = await getNDVIStats(lat, lon, {
+              from,
+              to,
+              interval,
+              maxCloudPct,
+              lastIntervalBehavior,
+              persist: false,
+            });
+            const analysis = buildSatelliteAnalysis(stats);
+            return serveJSON(res, { stats, analysis });
+          } catch (err) {
+            return serveJSON(res, { error: err.message }, 502);
+          }
+        }
+
         if (path === '/api/ndvi/image') {
-          if (!ndviEnabled()) { res.writeHead(503); res.end('NDVI not configured'); return; }
           const lat = parseFloat(url.searchParams.get('lat') || CONFIG.location.lat);
           const lon = parseFloat(url.searchParams.get('lon') || CONFIG.location.lon);
           const date = url.searchParams.get('date') || '';
           const mode = url.searchParams.get('mode') || 'ndvi';
+          if (mode !== 'truecolor' && !ndviEnabled()) { res.writeHead(503); res.end('NDVI not configured'); return; }
+          const sizeMeters = parsePositiveNumber(url.searchParams.get('size_meters'), undefined, { min: 40, max: 2000 });
           try {
             const imageOpts = { mode };
             if (date) imageOpts.date = date;
-            const buffer = await getNDVIImage(lat, lon, imageOpts);
-            res.writeHead(200, { 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=86400' });
-            res.end(buffer);
+            if (sizeMeters != null) imageOpts.sizeMeters = sizeMeters;
+            const image = await getNDVIImage(lat, lon, imageOpts);
+            res.writeHead(200, { 'Content-Type': image.contentType, 'Cache-Control': 'public, max-age=86400' });
+            res.end(image.buffer);
             return;
           } catch (err) {
             res.writeHead(502);
@@ -557,10 +613,10 @@ export function createRequestHandler({ host, port, appRoot, envPath, zonesPath, 
             writeFileSync(envPath, nextContent, { mode: 0o600 });
             syncWebUiAuth(nextContent);
             log(1, `Guided settings updated via web UI: ${path}`);
-            return redirect(res, path === '/setup/save' ? '/setup?msg=setup-saved' : '/settings?msg=settings-saved');
+            return redirect(res, '/settings?msg=settings-saved');
           } catch (err) {
             log(0, `Guided settings save failed: ${err.message}`);
-            return redirect(res, path === '/setup/save' ? '/setup?msg=setup-error' : '/settings?msg=settings-error');
+            return redirect(res, '/settings?msg=settings-error');
           }
         }
 

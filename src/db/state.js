@@ -453,13 +453,30 @@ export function getRecentReferenceET(days = 14) {
 
 export function saveNDVIReading(lat, lon, reading) {
   const db = getDB();
-  db.prepare(`INSERT INTO ndvi_history (lat, lon, period_from, period_to, ndvi_mean, ndvi_min, ndvi_max, sample_count) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
-    .run(lat, lon, reading.from, reading.to, reading.mean, reading.min, reading.max, reading.samples);
+  db.prepare(`
+    INSERT INTO ndvi_history (lat, lon, period_from, period_to, ndvi_mean, ndvi_min, ndvi_max, sample_count)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(lat, lon, period_from, period_to) DO UPDATE SET
+      ndvi_mean = excluded.ndvi_mean,
+      ndvi_min = excluded.ndvi_min,
+      ndvi_max = excluded.ndvi_max,
+      sample_count = excluded.sample_count,
+      fetched_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+  `).run(lat, lon, reading.from, reading.to, reading.mean, reading.min, reading.max, reading.samples);
 }
 
-export function getNDVIHistory(days = 180) {
+export function getNDVIHistory(days = 180, lat = null, lon = null) {
   const db = getDB();
   const since = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
+  if (lat != null && lon != null) {
+    return db.prepare(`
+      SELECT * FROM ndvi_history
+      WHERE period_from >= ?
+        AND abs(lat - ?) < 0.00001
+        AND abs(lon - ?) < 0.00001
+      ORDER BY period_from DESC
+    `).all(since, lat, lon);
+  }
   return db.prepare(`SELECT * FROM ndvi_history WHERE period_from >= ? ORDER BY period_from DESC`).all(since);
 }
 

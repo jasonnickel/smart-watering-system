@@ -3,6 +3,7 @@
 // reason through it before answering.
 
 import { localDateStr } from '../time.js';
+import CONFIG from '../config.js';
 import {
   getStatus, getRunsSince, getFinanceData, getDailyUsage,
   getSoilMoisture, getCachedWeather, getRecentDiscrepancies,
@@ -44,7 +45,7 @@ function buildHistorySummary() {
 
   // NDVI latest
   try {
-    const ndvi = getNDVIHistory(90);
+    const ndvi = getNDVIHistory(90, CONFIG.location.lat, CONFIG.location.lon);
     if (ndvi.length > 0) {
       const latest = ndvi[0];
       lines.push(`NDVI: ${latest.ndvi_mean?.toFixed(2) || '?'} (${latest.period_from?.slice(0, 10) || '?'})`);

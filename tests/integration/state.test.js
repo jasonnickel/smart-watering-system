@@ -7,10 +7,12 @@ import {
   initDB,
   closeDB,
   getDB,
+  getNDVIHistory,
   getRunsSince,
   getStatus,
   acquireRunLock,
   releaseRunLock,
+  saveNDVIReading,
   setSystemState,
   getSystemState,
 } from '../../src/db/state.js';
@@ -78,5 +80,62 @@ describe('Run lock semantics', () => {
 
     assert.equal(acquireRunLock(), false);
     assert.match(getSystemState('run_lock'), /\|other-runner$/);
+  });
+});
+
+describe('NDVI history storage', () => {
+  it('upserts the same NDVI period instead of duplicating it', () => {
+    const dbPath = makeTempDBPath();
+    initDB(dbPath);
+
+    saveNDVIReading(39.7, -105.2, {
+      from: '2026-01-01T00:00:00Z',
+      to: '2026-01-17T23:59:59Z',
+      mean: 0.31,
+      min: 0.15,
+      max: 0.48,
+      samples: 8,
+    });
+    saveNDVIReading(39.7, -105.2, {
+      from: '2026-01-01T00:00:00Z',
+      to: '2026-01-17T23:59:59Z',
+      mean: 0.42,
+      min: 0.21,
+      max: 0.63,
+      samples: 12,
+    });
+
+    const rows = getDB().prepare('SELECT ndvi_mean, sample_count FROM ndvi_history').all();
+
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].ndvi_mean, 0.42);
+    assert.equal(rows[0].sample_count, 12);
+  });
+
+  it('can scope NDVI history to a specific location', () => {
+    const dbPath = makeTempDBPath();
+    initDB(dbPath);
+
+    saveNDVIReading(39.7, -105.2, {
+      from: '2026-01-01T00:00:00Z',
+      to: '2026-01-17T23:59:59Z',
+      mean: 0.42,
+      min: 0.21,
+      max: 0.63,
+      samples: 12,
+    });
+    saveNDVIReading(39.8, -105.3, {
+      from: '2026-01-01T00:00:00Z',
+      to: '2026-01-17T23:59:59Z',
+      mean: 0.12,
+      min: 0.05,
+      max: 0.19,
+      samples: 10,
+    });
+
+    const rows = getNDVIHistory(180, 39.7, -105.2);
+
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].ndvi_mean, 0.42);
   });
 });

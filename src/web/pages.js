@@ -40,23 +40,39 @@ export function configuredSetupCard() {
   </div>`;
 }
 
+function secretField(id, name, label, isSaved, placeholder = '') {
+  if (isSaved) {
+    return `<div class="form-row">
+        <label for="${id}">${escapeHtml(label)}</label>
+        <div class="secret-field" id="${id}-wrapper">
+          <div class="secret-locked">
+            <span class="secret-dots">••••••••••••</span>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="this.closest('.secret-field').classList.add('secret-editing');this.closest('.secret-field').querySelector('input').focus();">Edit</button>
+          </div>
+          <div class="secret-input">
+            <input id="${id}" name="${name}" type="password" autocomplete="off" placeholder="Enter new value">
+            <button type="button" class="btn btn-secondary btn-sm" onclick="this.closest('.secret-field').classList.remove('secret-editing');this.closest('.secret-field').querySelector('input').value='';">Cancel</button>
+          </div>
+        </div>
+      </div>`;
+  }
+  return `<div class="form-row">
+      <label for="${id}">${escapeHtml(label)}</label>
+      <input id="${id}" name="${name}" type="password" autocomplete="off" placeholder="${escapeHtml(placeholder || label)}">
+    </div>`;
+}
+
 function renderGuidedSettingsForm(model, csrf, options = {}) {
   const {
     action = '/settings/guided-save',
-    submitLabel = 'Save Guided Settings',
+    submitLabel = 'Save Settings',
     intro = '',
     showDisablePassword = true,
   } = options;
 
-  const rachioHint = model.rachioConfigured
-    ? 'A Rachio key is already saved. Leave blank to keep it.'
-    : 'Paste your Rachio API key here.';
   const ambientHint = model.ambientApiConfigured || model.ambientAppConfigured || model.ambientMacConfigured
-    ? 'Ambient Weather credentials are already saved. Leave blank to keep them.'
-    : 'Leave blank if you want to rely on Open-Meteo fallback data.';
-  const authHint = model.webUiPasswordConfigured
-    ? 'A web login password is already saved. Leave blank to keep it.'
-    : 'Leave blank to keep the web UI open on localhost without a password.';
+    ? 'Ambient Weather credentials are saved.'
+    : 'Optional - leave blank to rely on Open-Meteo fallback data.';
 
   return `
     ${intro}
@@ -64,46 +80,8 @@ function renderGuidedSettingsForm(model, csrf, options = {}) {
       ${csrfField(csrf)}
       <fieldset>
         <legend>Rachio Controller</legend>
-        <p class="helper">${rachioHint}</p>
         <div class="form-grid">
-          <div class="form-row">
-            <label for="rachio-api-key">Rachio API key</label>
-            <input id="rachio-api-key" name="rachio_api_key" type="password" autocomplete="off" placeholder="${model.rachioConfigured ? 'Saved. Leave blank to keep.' : 'Paste Rachio API key'}">
-          </div>
-        </div>
-      </fieldset>
-
-      <fieldset>
-        <legend>Weather Station</legend>
-        <p class="helper">${ambientHint}</p>
-        <div class="form-grid">
-          <div class="form-row">
-            <label for="ambient-api-key">Ambient Weather API key</label>
-            <input id="ambient-api-key" name="ambient_api_key" type="password" autocomplete="off" placeholder="${model.ambientApiConfigured ? 'Saved. Leave blank to keep.' : 'Optional'}">
-          </div>
-          <div class="form-row">
-            <label for="ambient-app-key">Ambient Weather application key</label>
-            <input id="ambient-app-key" name="ambient_app_key" type="password" autocomplete="off" placeholder="${model.ambientAppConfigured ? 'Saved. Leave blank to keep.' : 'Optional'}">
-          </div>
-          <div class="form-row">
-            <label for="ambient-mac-address">Ambient station MAC address</label>
-            <input id="ambient-mac-address" name="ambient_mac_address" type="password" autocomplete="off" placeholder="${model.ambientMacConfigured ? 'Saved. Leave blank to keep.' : 'Optional'}">
-          </div>
-        </div>
-      </fieldset>
-
-      <fieldset>
-        <legend>Notifications</legend>
-        <p class="helper">Notifications currently go through an optional webhook receiver such as n8n.</p>
-        <div class="form-grid">
-          <div class="form-row">
-            <label for="notification-email">Notification email</label>
-            <input id="notification-email" name="notification_email" type="email" value="${escapeHtml(model.notificationEmail)}" placeholder="optional@example.com">
-          </div>
-          <div class="form-row">
-            <label for="webhook-url">Webhook URL</label>
-            <input id="webhook-url" name="webhook_url" type="url" value="${escapeHtml(model.webhookUrl)}" placeholder="https://your-n8n.example/webhook/smart-water">
-          </div>
+          ${secretField('rachio-api-key', 'rachio_api_key', 'Rachio API key', model.rachioConfigured, 'Paste Rachio API key')}
         </div>
       </fieldset>
 
@@ -127,56 +105,87 @@ function renderGuidedSettingsForm(model, csrf, options = {}) {
       </fieldset>
 
       <fieldset>
-        <legend>Home Assistant And MQTT</legend>
+        <legend>Operating Mode</legend>
         <div class="form-grid">
           <div class="form-row">
-            <label for="mqtt-broker-url">MQTT broker URL</label>
-            <input id="mqtt-broker-url" name="mqtt_broker_url" type="text" value="${escapeHtml(model.mqttBrokerUrl)}" placeholder="mqtt://192.168.1.50:1883">
-          </div>
-          <div class="form-row">
-            <label for="mqtt-topic-prefix">MQTT topic prefix</label>
-            <input id="mqtt-topic-prefix" name="mqtt_topic_prefix" type="text" value="${escapeHtml(model.mqttTopicPrefix)}" placeholder="smart-water">
-          </div>
-        </div>
-      </fieldset>
-
-      <fieldset>
-        <legend>Web UI And Safety</legend>
-        <div class="form-grid">
-          <div class="form-row">
-            <label for="shadow-mode">Operating mode</label>
+            <label for="shadow-mode">Mode</label>
             <select id="shadow-mode" name="shadow_mode">
               <option value="true"${selectedAttr(model.shadowMode ? 'true' : 'false', 'true')}>Shadow mode (safe default)</option>
               <option value="false"${selectedAttr(model.shadowMode ? 'true' : 'false', 'false')}>Live mode</option>
             </select>
           </div>
-          <div class="form-row">
-            <label for="debug-level">Debug level</label>
-            <select id="debug-level" name="debug_level">
-              <option value="0"${selectedAttr(model.debugLevel, '0')}>0 - errors only</option>
-              <option value="1"${selectedAttr(model.debugLevel, '1')}>1 - info</option>
-              <option value="2"${selectedAttr(model.debugLevel, '2')}>2 - debug</option>
-            </select>
-          </div>
-          <div class="form-row">
-            <label for="web-host">Web host</label>
-            <input id="web-host" name="web_host" type="text" value="${escapeHtml(model.webHost)}" placeholder="127.0.0.1">
-          </div>
-          <div class="form-row">
-            <label for="web-port">Web port</label>
-            <input id="web-port" name="web_port" type="text" inputmode="numeric" value="${escapeHtml(model.webPort)}" placeholder="3000">
-          </div>
-          <div class="form-row">
-            <label for="web-ui-password">Optional web UI password</label>
-            <input id="web-ui-password" name="web_ui_password" type="password" autocomplete="new-password" placeholder="${model.webUiPasswordConfigured ? 'Saved. Leave blank to keep.' : 'Optional'}">
-            <p class="small">${authHint}</p>
-          </div>
         </div>
-        ${showDisablePassword ? `<label class="checkbox-row">
-          <input name="disable_web_ui_password" type="checkbox">
-          <span>Disable the web UI password and return to localhost-only access</span>
-        </label>` : ''}
       </fieldset>
+
+      <details class="settings-extra">
+        <summary>Additional Settings</summary>
+
+        <fieldset>
+          <legend>Weather Station</legend>
+          <p class="helper">${ambientHint}</p>
+          <div class="form-grid">
+            ${secretField('ambient-api-key', 'ambient_api_key', 'Ambient Weather API key', model.ambientApiConfigured, 'Optional')}
+            ${secretField('ambient-app-key', 'ambient_app_key', 'Ambient Weather application key', model.ambientAppConfigured, 'Optional')}
+            ${secretField('ambient-mac-address', 'ambient_mac_address', 'Ambient station MAC address', model.ambientMacConfigured, 'Optional')}
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Notifications</legend>
+          <p class="helper">Notifications currently go through an optional webhook receiver such as n8n.</p>
+          <div class="form-grid">
+            <div class="form-row">
+              <label for="notification-email">Notification email</label>
+              <input id="notification-email" name="notification_email" type="email" value="${escapeHtml(model.notificationEmail)}" placeholder="optional@example.com">
+            </div>
+            <div class="form-row">
+              <label for="webhook-url">Webhook URL</label>
+              <input id="webhook-url" name="webhook_url" type="url" value="${escapeHtml(model.webhookUrl)}" placeholder="https://your-n8n.example/webhook/smart-water">
+            </div>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Home Assistant And MQTT</legend>
+          <div class="form-grid">
+            <div class="form-row">
+              <label for="mqtt-broker-url">MQTT broker URL</label>
+              <input id="mqtt-broker-url" name="mqtt_broker_url" type="text" value="${escapeHtml(model.mqttBrokerUrl)}" placeholder="mqtt://192.168.1.50:1883">
+            </div>
+            <div class="form-row">
+              <label for="mqtt-topic-prefix">MQTT topic prefix</label>
+              <input id="mqtt-topic-prefix" name="mqtt_topic_prefix" type="text" value="${escapeHtml(model.mqttTopicPrefix)}" placeholder="smart-water">
+            </div>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Web UI</legend>
+          <div class="form-grid">
+            <div class="form-row">
+              <label for="debug-level">Debug level</label>
+              <select id="debug-level" name="debug_level">
+                <option value="0"${selectedAttr(model.debugLevel, '0')}>0 - errors only</option>
+                <option value="1"${selectedAttr(model.debugLevel, '1')}>1 - info</option>
+                <option value="2"${selectedAttr(model.debugLevel, '2')}>2 - debug</option>
+              </select>
+            </div>
+            <div class="form-row">
+              <label for="web-host">Web host</label>
+              <input id="web-host" name="web_host" type="text" value="${escapeHtml(model.webHost)}" placeholder="127.0.0.1">
+            </div>
+            <div class="form-row">
+              <label for="web-port">Web port</label>
+              <input id="web-port" name="web_port" type="text" inputmode="numeric" value="${escapeHtml(model.webPort)}" placeholder="3000">
+            </div>
+            ${secretField('web-ui-password', 'web_ui_password', 'Web UI password', model.webUiPasswordConfigured, 'Optional')}
+          </div>
+          ${showDisablePassword && model.webUiPasswordConfigured ? `<label class="checkbox-row">
+            <input name="disable_web_ui_password" type="checkbox">
+            <span>Remove the web UI password</span>
+          </label>` : ''}
+        </fieldset>
+      </details>
 
       <div class="actions">
         ${button(submitLabel)}
@@ -374,9 +383,8 @@ function renderAdvisorSection() {
       </div>`
     : '<p class="helper">No weather-confidence, rain-gauge, or flow-calibration issues have crossed the advisory thresholds recently.</p>';
 
-  return `<div class="card">
-    <h2>Advisor Insights</h2>
-    <p class="helper">Advisory-only suggestions inspired by the future-work plan. These notes never change the deterministic watering engine on their own.</p>
+  return `<div class="advisor-content">
+    <p class="helper">Advisory-only suggestions. These notes never change the deterministic watering engine on their own.</p>
     ${content}
   </div>`;
 }
@@ -488,61 +496,21 @@ export function dashboardPage(query, zonesPath, csrf) {
     </div>`
     : `<p class="helper">Finish setup before sending commands to Rachio.</p>`;
 
-  const smokeTestHtml = envModel.rachioConfigured && !isShadow ? `<div class="card">
-      <h2>Commissioning Smoke Test</h2>
-      <p class="helper">This runs one short live zone test using the same command path as the controller. It is optional and intended for the day you leave shadow mode.</p>
-      <form method="POST" action="/action/smoke-test" onsubmit="return confirm('Start a live smoke test now? This will send a real command to Rachio.')">
-        ${csrfField(csrf)}
-        <div class="form-grid">
-          <div class="form-row">
-            <label for="smoke-zone">Zone</label>
-            <select id="smoke-zone" name="zone">${smokeZoneOptions}</select>
-          </div>
-          <div class="form-row">
-            <label for="smoke-minutes">Duration</label>
-            <select id="smoke-minutes" name="minutes">
-              <option value="1">1 minute</option>
-              <option value="2">2 minutes</option>
-              <option value="3">3 minutes</option>
-            </select>
-          </div>
-        </div>
-        <div class="actions">
-          ${button('Run Smoke Test', 'warning')}
-        </div>
-      </form>
-    </div>`
-    : `<div class="card">
-      <h2>Commissioning Smoke Test</h2>
-      <p class="helper">Smoke testing becomes available after you leave shadow mode. It is intentionally optional so coders can keep using the CLI workflow instead.</p>
-    </div>`;
-
   // Setup is complete when Rachio key is configured
   const setupComplete = envModel.rachioConfigured;
   const hasMoistureData = status.moisture.length > 0;
+
+  const hasActiveInsights = collectAdvisorInsights().some(i => i.severity === 'critical' || i.severity === 'warning');
 
   return layout('Dashboard', `
     ${noticeBanner(query)}
 
     ${!setupComplete ? `<div class="card notice notice-warning" role="status">
       <h2>Finish Setup</h2>
-      <p class="helper">The browser UI can walk you through setup, or you can keep using <span class="inline-code">smart-water setup</span> from the terminal.</p>
+      <p class="helper">Add your Rachio API key in Settings to get started, or use <span class="inline-code">smart-water setup</span> from the terminal.</p>
       <div class="actions">
-        <a class="btn btn-primary" href="/setup">Open Guided Setup</a>
+        <a class="btn btn-primary" href="/settings">Open Settings</a>
       </div>
-    </div>` : ''}
-
-    ${aiNarrationEnabled() ? `<div class="card">
-      <h2>Ask Your Yard</h2>
-      <p class="helper">Ask questions about your irrigation system in plain English. Answers are grounded in your live data.</p>
-      <form id="chat-form" class="chat-form">
-        ${csrfField(csrf)}
-        <div class="chat-input-row">
-          <input id="chat-input" type="text" placeholder="Why didn't you water yesterday?" maxlength="500" autocomplete="off">
-          ${button('Ask', 'primary')}
-        </div>
-      </form>
-      <div id="chat-output" class="chat-output"></div>
     </div>` : ''}
 
     <div class="grid grid-2">
@@ -553,24 +521,16 @@ export function dashboardPage(query, zonesPath, csrf) {
           <div class="stat"><span>Weather</span><span>${weatherHtml}</span></div>
           <div class="stat"><span>Last decision</span><span>${lastDecision}</span></div>
         </div>
-        ${lastExplanation ? `<p style="font-size:13px;color:var(--muted);margin-top:8px;line-height:1.5;border-top:1px solid var(--border);padding-top:8px;">${escapeHtml(lastExplanation)}</p>` : ''}
+        ${lastExplanation ? `<p class="card-footnote">${escapeHtml(lastExplanation)}</p>` : ''}
       </div>
-      ${!setupComplete ? `<div class="card">
-        <h2>Setup Snapshot</h2>
-        <div class="stat-list">
-          <div class="stat"><span>Rachio key</span><span>${envModel.rachioConfigured ? badge('Saved', 'success') : badge('Missing', 'warning')}</span></div>
-          <div class="stat"><span>Ambient Weather</span><span>${envModel.ambientApiConfigured && envModel.ambientAppConfigured && envModel.ambientMacConfigured ? badge('Configured', 'success') : badge('Optional', 'neutral')}</span></div>
-          <div class="stat"><span>MQTT</span><span>${envModel.mqttBrokerUrl ? badge('Configured', 'success') : badge('Optional', 'neutral')}</span></div>
-          <div class="stat"><span>Web login</span><span>${authEnabled() ? badge('Enabled', 'success') : badge('Disabled', 'neutral')}</span></div>
-        </div>
-      </div>` : `<div class="card">
+      ${setupComplete ? `<div class="card">
         <h2>Water Usage</h2>
         <div class="stat-list">
           <div class="stat"><span>Today</span><span>${status.todayUsage.gallons.toFixed(0)} gal / $${status.todayUsage.cost.toFixed(2)}</span></div>
           <div class="stat"><span>This month</span><span>${finance?.monthly_gallons?.toFixed(0) || 0} gal / $${finance?.monthly_cost?.toFixed(2) || '0.00'}</span></div>
           <div class="stat"><span>Billing cycle</span><span>${finance?.cumulative_gallons?.toFixed(0) || 0} gal</span></div>
         </div>
-      </div>`}
+      </div>` : ''}
     </div>
 
     ${hasMoistureData ? `<div class="card">
@@ -578,16 +538,66 @@ export function dashboardPage(query, zonesPath, csrf) {
       <div class="grid grid-2">${moistureHtml}</div>
     </div>` : ''}
 
-    ${forecastHtml ? `<div class="card"><h2>Forecast</h2>${forecastHtml}</div>` : ''}
-    ${renderAdvisorSection()}
-
     ${setupComplete ? `<div class="card">
       <h2>Quick Actions</h2>
       <p class="helper">${isShadow ? 'Shadow mode records decisions without actuating Rachio.' : 'Live mode sends real watering commands to Rachio.'}</p>
       ${actionsHtml}
     </div>` : ''}
 
-    ${smokeTestHtml}
+    ${forecastHtml ? `<div class="card"><h2>Forecast</h2>${forecastHtml}</div>` : ''}
+
+    <details class="card-details"${hasActiveInsights ? ' open' : ''}>
+      <summary>Advisor Insights${hasActiveInsights ? ` - ${badge('Attention', 'warning')}` : ''}</summary>
+      ${renderAdvisorSection()}
+    </details>
+
+    ${aiNarrationEnabled() ? `<div class="card">
+      <h2>Ask Your Yard</h2>
+      <p class="helper">Ask questions about your irrigation system in plain English.</p>
+      <form id="chat-form" class="chat-form">
+        ${csrfField(csrf)}
+        <div class="chat-input-row">
+          <input id="chat-input" type="text" placeholder="Why didn't you water yesterday?" maxlength="500" autocomplete="off">
+          ${button('Ask', 'primary')}
+        </div>
+      </form>
+      <div id="chat-output" class="chat-output"></div>
+    </div>` : ''}
+
+    ${envModel.rachioConfigured && !isShadow ? `<details class="card-details">
+      <summary>Commissioning Smoke Test</summary>
+      <div class="card">
+        <p class="helper">Run one short live zone test using the same command path as the controller.</p>
+        <form method="POST" action="/action/smoke-test" onsubmit="return confirm('Start a live smoke test now? This will send a real command to Rachio.')">
+          ${csrfField(csrf)}
+          <div class="form-grid">
+            <div class="form-row">
+              <label for="smoke-zone">Zone</label>
+              <select id="smoke-zone" name="zone">${smokeZoneOptions}</select>
+            </div>
+            <div class="form-row">
+              <label for="smoke-minutes">Duration</label>
+              <select id="smoke-minutes" name="minutes">
+                <option value="1">1 minute</option>
+                <option value="2">2 minutes</option>
+                <option value="3">3 minutes</option>
+              </select>
+            </div>
+          </div>
+          <div class="actions">
+            ${button('Run Smoke Test', 'warning')}
+          </div>
+        </form>
+      </div>
+    </details>` : ''}
+
+    <div class="card">
+      <h2>More</h2>
+      <div class="actions">
+        <a class="btn btn-secondary" href="/briefing">Weekly Briefing</a>
+        <a class="btn btn-secondary" href="/satellite">Satellite Imagery</a>
+      </div>
+    </div>
   `, 'dashboard', { authEnabled: authEnabled(), csrf });
 }
 
@@ -642,31 +652,38 @@ export function zonesPage(query, zonesPath, csrf) {
   const zoneData = loadZoneEditorData(zonesPath);
   return layout('Zones', `
     ${noticeBanner(query)}
-    ${configuredSetupCard()}
     ${zoneData.parseError ? `<div class="card notice notice-warning" role="alert">
       The existing zones.yaml could not be parsed. The guided editor is showing fallback values until you fix or replace the YAML below.
     </div>` : ''}
     ${renderGuidedZonesForm(zoneData, csrf)}
-    <div class="card">
-      <h2>Advanced Editing</h2>
-      <p class="helper">Add or remove zones, customize comments, or edit YAML directly if you prefer.</p>
-      ${renderAdvancedZonesEditor(zoneData, query, csrf)}
-    </div>
+    ${renderAdvancedZonesEditor(zoneData, query, csrf)}
   `, 'zones', { authEnabled: authEnabled(), csrf });
 }
 
 export function settingsPage(query, csrf) {
   const envContent = readEnvFile();
   const model = buildGuidedSettingsModel(envContent);
+  const setupNeeded = !model.rachioConfigured;
 
   return layout('Settings', `
     ${noticeBanner(query)}
-    ${configuredSetupCard()}
+    ${setupNeeded ? `<div class="card notice notice-warning" role="status">
+      <h2>Finish Setup</h2>
+      <p class="helper">Add your Rachio API key below to get started. You can also use <span class="inline-code">smart-water setup</span> from the terminal.</p>
+    </div>` : ''}
     <div class="card">
-      <h2>Guided Settings</h2>
-      <p class="helper">This covers the common settings most people need. Leave secret fields blank to keep the existing saved value.</p>
+      <h2>Settings</h2>
+      <p class="helper">Leave secret fields blank to keep the existing saved value.</p>
       ${renderGuidedSettingsForm(model, csrf)}
     </div>
+    ${setupNeeded ? `<div class="card">
+      <h2>Next Steps</h2>
+      <div class="stat-list">
+        <div class="stat"><span>1.</span><span>Review zones in the Zones tab or keep using raw YAML.</span></div>
+        <div class="stat"><span>2.</span><span>Run <span class="inline-code">smart-water doctor</span> to verify connectivity.</span></div>
+        <div class="stat"><span>3.</span><span>Stay in shadow mode until you trust the decisions.</span></div>
+      </div>
+    </div>` : ''}
     <div class="card">
       <h2>Advanced Editing</h2>
       <p class="helper">Use the raw env editor if you prefer direct control or want to edit less common settings such as SMTP or status page path.</p>
@@ -725,45 +742,51 @@ export function satellitePage(csrf) {
   return layout('Satellite', `
     <div class="card" id="satellite-app">
       <h2>Satellite Vegetation Health</h2>
-      <p class="helper">Sentinel-2 satellite imagery showing your yard's vegetation health over time. Green areas are healthy; yellow/brown areas are stressed or bare. Images are at 10-meter resolution, updated every 5 days.</p>
+      <p class="helper">The useful view is a hybrid: a sharp orthophoto for yard context with a monthly Sentinel vegetation-health layer laid on top. The base image stays crisp; the monthly overlay shows where vegetation is getting healthier or weaker over time.</p>
+
+      <div class="sat-controls">
+        <div class="form-row">
+          <label for="sat-months">Timeline Length</label>
+          <select id="sat-months">
+            <option value="6">Last 6 months</option>
+            <option value="12" selected>Last 12 months</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <label for="sat-opacity">Overlay Opacity</label>
+          <input id="sat-opacity" type="range" min="20" max="80" step="5" value="55">
+          <div class="small" id="sat-opacity-label">55% overlay strength</div>
+        </div>
+        <button id="sat-load" class="btn btn-primary" type="button"${enabled ? '' : ' disabled'}>Load Monthly View</button>
+      </div>
 
       ${enabled ? `
       <div class="sat-controls">
-        <div class="form-row">
-          <label for="sat-view">Compare</label>
-          <select id="sat-view">
-            <option value="week">Week to Week (12 weeks)</option>
-            <option value="month" selected>Month to Month (12 months)</option>
-            <option value="year">Year to Year (2 years quarterly)</option>
-          </select>
-        </div>
-        <div class="form-row">
-          <label for="sat-mode">Image Type</label>
-          <select id="sat-mode">
-            <option value="truecolor" selected>True Color Satellite</option>
-            <option value="ndvi">Vegetation Health (NDVI enhanced)</option>
-          </select>
-        </div>
-        <button id="sat-load" class="btn btn-primary" type="button">Load Satellite Images</button>
+        <p class="helper" style="margin:0">Each card uses the same high-resolution house image for alignment and overlays one calendar month of vegetation health. This is for trend spotting, not exact blade-level diagnosis.</p>
       </div>
       <p id="sat-status" class="small"></p>
+      <div id="sat-analysis"></div>
       <div id="sat-chart"></div>
       <div id="sat-gallery" class="sat-gallery"></div>
 
       <div class="card" style="margin-top:16px">
-        <h3>Reading the Images</h3>
+        <h3>How To Read It</h3>
         <div class="sat-legend">
-          <div class="sat-legend-item"><span class="sat-swatch" style="background:#1a991a"></span> Dark green - dense healthy vegetation</div>
-          <div class="sat-legend-item"><span class="sat-swatch" style="background:#80cc33"></span> Light green - moderate vegetation</div>
-          <div class="sat-legend-item"><span class="sat-swatch" style="background:#ccb333"></span> Yellow - sparse or stressed vegetation</div>
-          <div class="sat-legend-item"><span class="sat-swatch" style="background:#996633"></span> Brown - bare soil or dormant turf</div>
-          <div class="sat-legend-item"><span class="sat-swatch" style="background:#cccccc"></span> Grey - cloud cover (no data)</div>
+          <div class="sat-legend-item"><span class="sat-swatch" style="background:linear-gradient(135deg,#8e8a7d,#d5cfba)"></span> Base image - best available sharp orthophoto for your area</div>
+          <div class="sat-legend-item"><span class="sat-swatch" style="background:#1a991a"></span> Strong green overlay - healthier, denser vegetation signal</div>
+          <div class="sat-legend-item"><span class="sat-swatch" style="background:#ccb333"></span> Yellow overlay - thinner or stressed vegetation</div>
+          <div class="sat-legend-item"><span class="sat-swatch" style="background:#996633"></span> Brown overlay - bare or dormant ground cover</div>
+          <div class="sat-legend-item"><span class="sat-swatch" style="background:rgba(0,0,0,0)"></span> No overlay - no strong vegetation signal or no usable monthly observation</div>
         </div>
       </div>
       ` : `
-      <div class="notice notice-warning card">
-        <p>Satellite imagery requires a free Copernicus Data Space account.</p>
-        <p class="helper">Sign up at dataspace.copernicus.eu and add <span class="inline-code">COPERNICUS_EMAIL</span> and <span class="inline-code">COPERNICUS_PASSWORD</span> to your env file.</p>
+      <p id="sat-status" class="small"></p>
+      <div id="sat-chart"></div>
+      <div id="sat-gallery" class="sat-gallery"></div>
+
+      <div class="notice notice-warning card" style="margin-top:16px">
+        <p>The monthly vegetation overlay requires a free Copernicus Data Space account.</p>
+        <p class="helper">Add <span class="inline-code">COPERNICUS_EMAIL</span> and <span class="inline-code">COPERNICUS_PASSWORD</span> to your env file to turn on the monthly health view.</p>
       </div>
       `}
     </div>

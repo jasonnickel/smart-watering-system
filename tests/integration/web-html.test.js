@@ -145,7 +145,7 @@ describe('HTML helpers', () => {
       const html = layout('Test Page', '<p>content</p>', 'dashboard');
       assert.match(html, /<!DOCTYPE html>/);
       assert.match(html, /<title>Test Page - Smart Water<\/title>/);
-      assert.match(html, /href="\/styles\.css"/);
+      assert.match(html, /href="\/styles\.css(?:\?v=\d+)?"/);
       assert.match(html, /<p>content<\/p>/);
     });
 
@@ -169,7 +169,7 @@ describe('HTML helpers', () => {
 
     it('links stylesheet and theme script instead of inline CSS', () => {
       const html = layout('Test', '', 'dashboard');
-      assert.match(html, /rel="stylesheet" href="\/styles\.css"/);
+      assert.match(html, /rel="stylesheet" href="\/styles\.css(?:\?v=\d+)?"/);
       assert.match(html, /src="\/theme\.js"/);
       assert.doesNotMatch(html, /<style>/);
     });

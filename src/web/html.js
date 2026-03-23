@@ -68,13 +68,10 @@ export function layout(title, content, activeTab, options = {}) {
   const { showNav = true, authEnabled = false, csrf = '' } = options;
   const tabs = [
     { id: 'dashboard', label: 'Dashboard', path: '/' },
-    { id: 'logs', label: 'Run History', path: '/logs' },
+    { id: 'logs', label: 'History', path: '/logs' },
     { id: 'zones', label: 'Zones', path: '/zones' },
     { id: 'charts', label: 'Charts', path: '/charts' },
-    { id: 'briefing', label: 'Briefing', path: '/briefing' },
-    { id: 'satellite', label: 'Satellite', path: '/satellite' },
     { id: 'settings', label: 'Settings', path: '/settings' },
-    { id: 'setup', label: 'Guided Setup', path: '/setup' },
   ];
 
   const navHtml = showNav
@@ -97,11 +94,12 @@ export function layout(title, content, activeTab, options = {}) {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>${escapeHtml(title)} - Smart Water</title>
-  <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/styles.css?v=20260324">
   <script src="/theme.js"></script>
   <script src="/ai.js" defer></script>
-  <script src="/satellite.js" defer></script>
+  <script src="/satellite.js?v=20260324" defer></script>
   <link rel="manifest" href="/manifest.json">
+  <link rel="icon" href="/icon-192.svg" type="image/svg+xml">
   <meta name="theme-color" content="#0b5fff">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
