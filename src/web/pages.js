@@ -19,7 +19,7 @@ import { collectAdvisorInsights } from '../ai/advisor.js';
 import { authEnabled, safeNextPath } from './auth.js';
 import {
   layout, noticeBanner, escapeHtml, badge, button,
-  moistureBar, selectedAttr,
+  moistureBar, selectedAttr, csrfField,
 } from './html.js';
 
 // -- Shared helpers ----------------------------------------------------------
@@ -34,7 +34,7 @@ export function configuredSetupCard() {
   </div>`;
 }
 
-function renderGuidedSettingsForm(model, options = {}) {
+function renderGuidedSettingsForm(model, csrf, options = {}) {
   const {
     action = '/settings/guided-save',
     submitLabel = 'Save Guided Settings',
@@ -55,6 +55,7 @@ function renderGuidedSettingsForm(model, options = {}) {
   return `
     ${intro}
     <form method="POST" action="${action}">
+      ${csrfField(csrf)}
       <fieldset>
         <legend>Rachio Controller</legend>
         <p class="helper">${rachioHint}</p>
@@ -178,12 +179,13 @@ function renderGuidedSettingsForm(model, options = {}) {
   `;
 }
 
-function renderAdvancedSettingsEditor(rawEnv, query) {
+function renderAdvancedSettingsEditor(rawEnv, query, csrf) {
   const advancedOpen = query.get('advanced') === '1' ? ' open' : '';
   return `<details${advancedOpen}>
     <summary>Advanced Raw Editor</summary>
     <p class="helper">This is the original plain-text env editor for people who prefer files and direct control.</p>
     <form method="POST" action="/settings/save">
+      ${csrfField(csrf)}
       <div class="form-row">
         <label for="raw-env">Environment file</label>
         <textarea id="raw-env" name="env" rows="18">${escapeHtml(rawEnv)}</textarea>
@@ -231,7 +233,7 @@ function zoneNameMap() {
   return names;
 }
 
-function renderGuidedZonesForm(zoneData) {
+function renderGuidedZonesForm(zoneData, csrf) {
   const names = zoneNameMap();
 
   const zoneCards = zoneData.zones.map(zone => {
@@ -287,6 +289,7 @@ function renderGuidedZonesForm(zoneData) {
 
   return `
     <form method="POST" action="/zones/guided-save">
+      ${csrfField(csrf)}
       <div class="grid grid-2">
         <div class="card">
           <h2>Zone Setup</h2>
@@ -306,12 +309,13 @@ function renderGuidedZonesForm(zoneData) {
   `;
 }
 
-function renderAdvancedZonesEditor(zoneData, query) {
+function renderAdvancedZonesEditor(zoneData, query, csrf) {
   const advancedOpen = query.get('advanced') === '1' ? ' open' : '';
   return `<details${advancedOpen}>
     <summary>Advanced YAML Editor</summary>
     <p class="helper">This is the original raw YAML editor for people who want full control.</p>
     <form method="POST" action="/zones/save">
+      ${csrfField(csrf)}
       <div class="form-row">
         <label for="raw-zones">zones.yaml</label>
         <textarea id="raw-zones" name="zones" rows="22">${escapeHtml(zoneData.rawYaml)}</textarea>
@@ -398,7 +402,7 @@ export function loginPage(query) {
   `, '', { showNav: false });
 }
 
-export function dashboardPage(query, zonesPath) {
+export function dashboardPage(query, zonesPath, csrf) {
   const todayStr = localDateStr();
   const status = getStatus(todayStr);
   const finance = getFinanceData();
@@ -468,9 +472,11 @@ export function dashboardPage(query, zonesPath) {
 
   const actionsHtml = envModel.rachioConfigured ? `<div class="actions">
       <form method="POST" action="/action/water" onsubmit="return confirm('${escapeHtml(isShadow ? 'Start a manual watering run now? Shadow mode is enabled, so nothing will actuate.' : 'Start a live manual watering run now? This will send a real command to Rachio.')}')">
+        ${csrfField(csrf)}
         ${button(isShadow ? 'Run Manual Watering (Shadow)' : 'Water Now (Live)')}
       </form>
       <form method="POST" action="/action/shadow-toggle" onsubmit="return confirm('${escapeHtml(isShadow ? 'Switch to live mode? Future WATER decisions will actuate your Rachio controller.' : 'Switch back to shadow mode? Future decisions will log only and will not actuate Rachio.')}')">
+        ${csrfField(csrf)}
         ${button(isShadow ? 'Go Live' : 'Enable Shadow', isShadow ? 'success' : 'warning')}
       </form>
     </div>`
@@ -480,6 +486,7 @@ export function dashboardPage(query, zonesPath) {
       <h2>Commissioning Smoke Test</h2>
       <p class="helper">This runs one short live zone test using the same command path as the controller. It is optional and intended for the day you leave shadow mode.</p>
       <form method="POST" action="/action/smoke-test" onsubmit="return confirm('Start a live smoke test now? This will send a real command to Rachio.')">
+        ${csrfField(csrf)}
         <div class="form-grid">
           <div class="form-row">
             <label for="smoke-zone">Zone</label>
@@ -559,10 +566,10 @@ export function dashboardPage(query, zonesPath) {
         <div class="stat"><span>Billing cycle</span><span>${finance?.cumulative_gallons?.toFixed(0) || 0} gal</span></div>
       </div>
     </div>
-  `, 'dashboard', { authEnabled: authEnabled() });
+  `, 'dashboard', { authEnabled: authEnabled(), csrf });
 }
 
-export function logsPage(query) {
+export function logsPage(query, csrf) {
   const hours = parseHistoryHours(query);
   const since = new Date(Date.now() - hours * 3600000).toISOString();
   const runs = getRunsSince(since);
@@ -596,10 +603,10 @@ export function logsPage(query) {
         </table>
       </div>
     </div>
-  `, 'logs', { authEnabled: authEnabled() });
+  `, 'logs', { authEnabled: authEnabled(), csrf });
 }
 
-export function zonesPage(query, zonesPath) {
+export function zonesPage(query, zonesPath, csrf) {
   const zoneData = loadZoneEditorData(zonesPath);
   return layout('Zones', `
     ${noticeBanner(query)}
@@ -607,16 +614,16 @@ export function zonesPage(query, zonesPath) {
     ${zoneData.parseError ? `<div class="card notice notice-warning" role="alert">
       The existing zones.yaml could not be parsed. The guided editor is showing fallback values until you fix or replace the YAML below.
     </div>` : ''}
-    ${renderGuidedZonesForm(zoneData)}
+    ${renderGuidedZonesForm(zoneData, csrf)}
     <div class="card">
       <h2>Advanced Editing</h2>
       <p class="helper">Add or remove zones, customize comments, or edit YAML directly if you prefer.</p>
-      ${renderAdvancedZonesEditor(zoneData, query)}
+      ${renderAdvancedZonesEditor(zoneData, query, csrf)}
     </div>
-  `, 'zones', { authEnabled: authEnabled() });
+  `, 'zones', { authEnabled: authEnabled(), csrf });
 }
 
-export function settingsPage(query) {
+export function settingsPage(query, csrf) {
   const envContent = readEnvFile();
   const model = buildGuidedSettingsModel(envContent);
 
@@ -626,17 +633,17 @@ export function settingsPage(query) {
     <div class="card">
       <h2>Guided Settings</h2>
       <p class="helper">This covers the common settings most people need. Leave secret fields blank to keep the existing saved value.</p>
-      ${renderGuidedSettingsForm(model)}
+      ${renderGuidedSettingsForm(model, csrf)}
     </div>
     <div class="card">
       <h2>Advanced Editing</h2>
       <p class="helper">Use the raw env editor if you prefer direct control or want to edit less common settings such as SMTP or status page path.</p>
-      ${renderAdvancedSettingsEditor(envContent, query)}
+      ${renderAdvancedSettingsEditor(envContent, query, csrf)}
     </div>
-  `, 'settings', { authEnabled: authEnabled() });
+  `, 'settings', { authEnabled: authEnabled(), csrf });
 }
 
-export function setupPage(query) {
+export function setupPage(query, csrf) {
   const envContent = readEnvFile();
   const model = buildGuidedSettingsModel(envContent);
 
@@ -645,7 +652,7 @@ export function setupPage(query) {
     <div class="card">
       <h2>Guided Setup</h2>
       <p class="helper">This page is optional. If you prefer the developer workflow, you can still use <span class="inline-code">smart-water setup</span>, edit <span class="inline-code">~/.smart-water/.env</span>, and manage <span class="inline-code">zones.yaml</span> directly.</p>
-      ${renderGuidedSettingsForm(model, {
+      ${renderGuidedSettingsForm(model, csrf, {
         action: '/setup/save',
         submitLabel: 'Save Guided Setup',
         showDisablePassword: model.webUiPasswordConfigured,
@@ -659,9 +666,9 @@ export function setupPage(query) {
         <div class="stat"><span>3.</span><span>Stay in shadow mode until you trust the decisions.</span></div>
       </div>
     </div>
-  `, 'setup', { authEnabled: authEnabled() });
+  `, 'setup', { authEnabled: authEnabled(), csrf });
 }
 
-export function chartsPage() {
-  return layout('Charts', chartsPageContent(), 'charts', { authEnabled: authEnabled() });
+export function chartsPage(csrf) {
+  return layout('Charts', chartsPageContent(), 'charts', { authEnabled: authEnabled(), csrf });
 }

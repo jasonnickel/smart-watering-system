@@ -1,7 +1,7 @@
 // HTTP request handler and route dispatch for the web UI.
 
-import { dirname, join } from 'node:path';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { URL } from 'node:url';
 import { execFile } from 'node:child_process';
 import yaml from 'js-yaml';
@@ -22,12 +22,25 @@ import { log } from '../log.js';
 import {
   initAuth,
   authEnabled, hasValidSession, createSession, clearSession,
-  verifyPassword, safeNextPath, AUTH_COOKIE_NAME, SESSION_TTL_MS,
+  verifyPassword, safeNextPath, verifyCsrf, getCsrfToken,
+  checkLoginRate, recordLoginFailure, clearLoginFailures,
+  AUTH_COOKIE_NAME, SESSION_TTL_MS,
 } from './auth.js';
 import {
   loginPage, dashboardPage, logsPage, zonesPage,
   settingsPage, setupPage, chartsPage,
 } from './pages.js';
+
+// -- Constants ---------------------------------------------------------------
+
+const MAX_BODY_BYTES = 64 * 1024;
+
+const SECURITY_HEADERS = {
+  'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self'; object-src 'none'; frame-ancestors 'none'",
+  'X-Content-Type-Options': 'nosniff',
+  'X-Frame-Options': 'DENY',
+  'Referrer-Policy': 'no-referrer',
+};
 
 // -- HTTP helpers ------------------------------------------------------------
 
@@ -41,10 +54,20 @@ const PUBLIC_PATHS = new Set([
 ]);
 
 function parseBody(req) {
-  return new Promise(resolve => {
+  return new Promise((resolve, reject) => {
     let body = '';
-    req.on('data', chunk => { body += chunk; });
+    let bytes = 0;
+    req.on('data', chunk => {
+      bytes += chunk.length;
+      if (bytes > MAX_BODY_BYTES) {
+        req.destroy();
+        reject(new Error('Request body too large'));
+        return;
+      }
+      body += chunk;
+    });
     req.on('end', () => resolve(new URLSearchParams(body)));
+    req.on('error', reject);
   });
 }
 
@@ -52,6 +75,7 @@ function redirect(res, url, extraHeaders = {}) {
   res.writeHead(302, {
     Location: url,
     'Cache-Control': 'no-store',
+    ...SECURITY_HEADERS,
     ...extraHeaders,
   });
   res.end();
@@ -61,6 +85,7 @@ function serve(res, html, statusCode = 200, extraHeaders = {}) {
   res.writeHead(statusCode, {
     'Content-Type': 'text/html; charset=utf-8',
     'Cache-Control': 'no-store',
+    ...SECURITY_HEADERS,
     ...extraHeaders,
   });
   res.end(html);
@@ -70,6 +95,7 @@ function serveJSON(res, payload, statusCode = 200) {
   res.writeHead(statusCode, {
     'Content-Type': 'application/json; charset=utf-8',
     'Cache-Control': 'no-store',
+    ...SECURITY_HEADERS,
   });
   res.end(JSON.stringify(payload));
 }
@@ -82,10 +108,23 @@ function serveStatic(res, urlPath, publicDir) {
     '.css': 'text/css',
   };
   const ext = urlPath.slice(urlPath.lastIndexOf('.'));
-  const filePath = join(publicDir, urlPath.replace(/^\//, ''));
+  const filePath = resolve(publicDir, urlPath.replace(/^\//, ''));
+
+  // Path containment: reject traversal attempts
+  const resolvedPublic = realpathSync(publicDir);
+  if (!filePath.startsWith(resolvedPublic)) {
+    res.writeHead(400, SECURITY_HEADERS);
+    res.end('Bad request');
+    return;
+  }
+
   try {
     const content = readFileSync(filePath);
-    res.writeHead(200, { 'Content-Type': MIME[ext] || 'application/octet-stream', 'Cache-Control': 'public, max-age=86400' });
+    res.writeHead(200, {
+      'Content-Type': MIME[ext] || 'application/octet-stream',
+      'Cache-Control': 'public, max-age=86400',
+      'X-Content-Type-Options': 'nosniff',
+    });
     res.end(content);
   } catch {
     res.writeHead(404);
@@ -117,6 +156,10 @@ function requireAuth(req, res, url) {
   return false;
 }
 
+function getClientIP(req) {
+  return req.socket?.remoteAddress || 'unknown';
+}
+
 // -- Form body readers -------------------------------------------------------
 
 function readGuidedSettingsFromBody(body) {
@@ -141,6 +184,21 @@ function readGuidedSettingsFromBody(body) {
   if (!timezone) {
     throw new Error('Timezone is required');
   }
+
+  // Validate timezone against IANA list
+  try {
+    const valid = Intl.supportedValuesOf('timeZone');
+    if (!valid.includes(timezone)) {
+      throw new Error(`Unknown timezone: ${timezone}`);
+    }
+  } catch (err) {
+    if (err.message.startsWith('Unknown timezone')) throw err;
+    // Intl.supportedValuesOf not available on older Node - fall back to basic check
+    if (!/^[A-Za-z_/+-]+$/.test(timezone)) {
+      throw new Error('Timezone contains invalid characters');
+    }
+  }
+
   if (!['0', '1', '2'].includes(debugLevel)) {
     throw new Error('Debug level must be 0, 1, or 2');
   }
@@ -229,13 +287,14 @@ export function createRequestHandler({ host, port, appRoot, envPath, zonesPath, 
       if (!requireAuth(req, res, url)) return;
 
       if (method === 'GET') {
-        if (path === '/login') return serve(res, loginPage(url.searchParams), 200);
-        if (path === '/' || path === '/dashboard') return serve(res, dashboardPage(url.searchParams, zonesPath));
-        if (path === '/logs') return serve(res, logsPage(url.searchParams));
-        if (path === '/zones') return serve(res, zonesPage(url.searchParams, zonesPath));
-        if (path === '/settings') return serve(res, settingsPage(url.searchParams));
-        if (path === '/setup') return serve(res, setupPage(url.searchParams));
-        if (path === '/charts') return serve(res, chartsPage());
+        const csrf = getCsrfToken(req);
+        if (path === '/login') return serve(res, loginPage(url.searchParams));
+        if (path === '/' || path === '/dashboard') return serve(res, dashboardPage(url.searchParams, zonesPath, csrf));
+        if (path === '/logs') return serve(res, logsPage(url.searchParams, csrf));
+        if (path === '/zones') return serve(res, zonesPage(url.searchParams, zonesPath, csrf));
+        if (path === '/settings') return serve(res, settingsPage(url.searchParams, csrf));
+        if (path === '/setup') return serve(res, setupPage(url.searchParams, csrf));
+        if (path === '/charts') return serve(res, chartsPage(csrf));
         if (path === '/api/status') return serveJSON(res, getStatusJSON(localDateStr()));
         if (path === '/api/charts') return serveJSON(res, getMoistureHistory(14));
 
@@ -246,18 +305,43 @@ export function createRequestHandler({ host, port, appRoot, envPath, zonesPath, 
       }
 
       if (method === 'POST') {
+        let body;
+        try {
+          body = await parseBody(req);
+        } catch {
+          res.writeHead(413, SECURITY_HEADERS);
+          res.end('Request body too large');
+          return;
+        }
+
         if (path === '/login') {
           if (!authEnabled()) return redirect(res, '/');
-          const body = await parseBody(req);
+          const ip = getClientIP(req);
+          if (!checkLoginRate(ip)) {
+            log(0, `Login rate limit exceeded for ${ip}`);
+            return redirect(res, '/login?msg=bad-auth');
+          }
           const password = String(body.get('password') || '');
           const next = safeNextPath(body.get('next'));
           if (!verifyPassword(password)) {
+            recordLoginFailure(ip);
             return redirect(res, `/login?msg=bad-auth&next=${encodeURIComponent(next)}`);
           }
-          const token = createSession();
+          // Clear any prior session before issuing a new one (prevent session fixation)
+          clearSession(req);
+          clearLoginFailures(ip);
+          const { token } = createSession();
           return redirect(res, next, {
             'Set-Cookie': `${AUTH_COOKIE_NAME}=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${Math.floor(SESSION_TTL_MS / 1000)}`,
           });
+        }
+
+        // All POST routes below /login require CSRF validation
+        if (!verifyCsrf(req, body)) {
+          log(0, `CSRF validation failed for ${path}`);
+          res.writeHead(403, SECURITY_HEADERS);
+          res.end('Forbidden - invalid CSRF token');
+          return;
         }
 
         if (path === '/logout') {
@@ -280,10 +364,12 @@ export function createRequestHandler({ host, port, appRoot, envPath, zonesPath, 
         }
 
         if (path === '/action/smoke-test') {
-          const body = await parseBody(req);
           const zone = parseInt(String(body.get('zone') || ''), 10);
           const minutes = parseInt(String(body.get('minutes') || ''), 10);
-          if (!Number.isFinite(zone) || !Number.isFinite(minutes)) {
+          if (!Number.isFinite(zone) || zone < 1 || zone > 16) {
+            return redirect(res, '/?msg=settings-error');
+          }
+          if (!Number.isFinite(minutes) || minutes < 1 || minutes > 10) {
             return redirect(res, '/?msg=settings-error');
           }
           runCliInBackground(['smoke-test', '--zone', String(zone), '--minutes', String(minutes), '--yes'], 'Smoke test via web UI', appRoot);
@@ -291,7 +377,6 @@ export function createRequestHandler({ host, port, appRoot, envPath, zonesPath, 
         }
 
         if (path === '/setup/save' || path === '/settings/guided-save') {
-          const body = await parseBody(req);
           try {
             const values = readGuidedSettingsFromBody(body);
             const nextContent = applyGuidedSettings(readEnvFile(), values);
@@ -307,7 +392,6 @@ export function createRequestHandler({ host, port, appRoot, envPath, zonesPath, 
         }
 
         if (path === '/zones/guided-save') {
-          const body = await parseBody(req);
           try {
             const yamlContent = buildZoneConfigYaml(readZonesFromBody(body));
             mkdirSync(dirname(zonesPath), { recursive: true });
@@ -321,10 +405,9 @@ export function createRequestHandler({ host, port, appRoot, envPath, zonesPath, 
         }
 
         if (path === '/zones/save') {
-          const body = await parseBody(req);
           const zonesContent = body.get('zones') || '';
           try {
-            yaml.load(zonesContent);
+            yaml.load(zonesContent, { schema: yaml.JSON_SCHEMA });
             mkdirSync(dirname(zonesPath), { recursive: true });
             writeFileSync(zonesPath, zonesContent);
             log(1, 'Zones config updated via raw web UI');
@@ -336,7 +419,6 @@ export function createRequestHandler({ host, port, appRoot, envPath, zonesPath, 
         }
 
         if (path === '/settings/save') {
-          const body = await parseBody(req);
           const envContent = body.get('env') || '';
           mkdirSync(dirname(envPath), { recursive: true });
           writeFileSync(envPath, envContent, { mode: 0o600 });
@@ -346,11 +428,11 @@ export function createRequestHandler({ host, port, appRoot, envPath, zonesPath, 
         }
       }
 
-      res.writeHead(404, { 'Cache-Control': 'no-store' });
+      res.writeHead(404, { 'Cache-Control': 'no-store', ...SECURITY_HEADERS });
       res.end('Not found');
     } catch (err) {
       log(0, `Web UI error: ${err.message}`);
-      res.writeHead(500, { 'Cache-Control': 'no-store' });
+      res.writeHead(500, { 'Cache-Control': 'no-store', ...SECURITY_HEADERS });
       res.end('Internal server error');
     }
   };

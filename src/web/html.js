@@ -1,5 +1,10 @@
 // HTML helpers, layout shell, and reusable UI components for the web UI.
 
+export function csrfField(token) {
+  if (!token) return '';
+  return `<input type="hidden" name="_csrf" value="${escapeHtml(token)}">`;
+}
+
 export function escapeHtml(str) {
   return String(str ?? '')
     .replace(/&/g, '&amp;')
@@ -60,7 +65,7 @@ export function noticeBanner(query) {
 }
 
 export function layout(title, content, activeTab, options = {}) {
-  const { showNav = true, authEnabled = false } = options;
+  const { showNav = true, authEnabled = false, csrf = '' } = options;
   const tabs = [
     { id: 'dashboard', label: 'Dashboard', path: '/' },
     { id: 'logs', label: 'Run History', path: '/logs' },
@@ -78,6 +83,7 @@ export function layout(title, content, activeTab, options = {}) {
 
   const logoutHtml = authEnabled && showNav
     ? `<form method="POST" action="/logout" class="header-actions">
+        ${csrfField(csrf)}
         ${button('Sign Out', 'secondary')}
       </form>`
     : '';

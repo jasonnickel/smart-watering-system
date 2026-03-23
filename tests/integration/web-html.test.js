@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  escapeHtml, selectedAttr, button, badge,
+  escapeHtml, selectedAttr, button, badge, csrfField,
   moistureBar, currentNotice, noticeBanner, layout,
 } from '../../src/web/html.js';
 
@@ -119,6 +119,24 @@ describe('HTML helpers', () => {
     it('renders a status role for non-error notices', () => {
       const html = noticeBanner(new URLSearchParams('msg=zones-saved'));
       assert.match(html, /role="status"/);
+    });
+  });
+
+  describe('csrfField', () => {
+    it('renders a hidden input with the token', () => {
+      const html = csrfField('abc123');
+      assert.match(html, /type="hidden"/);
+      assert.match(html, /name="_csrf"/);
+      assert.match(html, /value="abc123"/);
+    });
+
+    it('returns empty string for empty token', () => {
+      assert.equal(csrfField(''), '');
+    });
+
+    it('escapes HTML in token value', () => {
+      const html = csrfField('"><script>');
+      assert.match(html, /&quot;&gt;&lt;script&gt;/);
     });
   });
 
