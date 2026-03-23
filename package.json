@@ -1,5 +1,5 @@
 {
-  "name": "smart-water",
+  "name": "taproot",
   "version": "1.0.0",
   "description": "Intelligent irrigation controller for Rachio - ET-based soil moisture management",
   "license": "MIT",
@@ -28,7 +28,7 @@
     "water-conservation"
   ],
   "bin": {
-    "smart-water": "src/cli.js"
+    "taproot": "src/cli.js"
   },
   "scripts": {
     "start": "node src/cli.js run",

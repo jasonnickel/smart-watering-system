@@ -19,15 +19,15 @@ describe('Home Assistant discovery publishing', () => {
 
     publishHADiscovery([{ zone: 1, name: 'Front Lawn' }]);
 
-    const zoneConfig = publishes.find(entry => entry.topic === 'homeassistant/sensor/smart_water_zone_1_moisture/config');
+    const zoneConfig = publishes.find(entry => entry.topic === 'homeassistant/sensor/taproot_zone_1_moisture/config');
     assert.ok(zoneConfig, 'Expected zone discovery config on root homeassistant topic');
     assert.equal(zoneConfig.options.retain, true);
 
     const payload = JSON.parse(zoneConfig.message);
-    assert.equal(payload.state_topic, 'smart-water/zone/1/moisture');
+    assert.equal(payload.state_topic, 'taproot/zone/1/moisture');
 
     assert.ok(
-      publishes.every(entry => !entry.topic.startsWith('smart-water/homeassistant/')),
+      publishes.every(entry => !entry.topic.startsWith('taproot/homeassistant/')),
       `Unexpected prefixed HA discovery topic(s): ${publishes.map(entry => entry.topic).join(', ')}`
     );
   });

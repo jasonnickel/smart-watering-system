@@ -125,7 +125,7 @@ function renderGuidedSettingsForm(model, csrf, options = {}) {
             </div>
             <div class="form-row">
               <label for="webhook-url">Webhook URL</label>
-              <input id="webhook-url" name="webhook_url" type="url" value="${escapeHtml(model.webhookUrl)}" placeholder="https://your-n8n.example/webhook/smart-water">
+              <input id="webhook-url" name="webhook_url" type="url" value="${escapeHtml(model.webhookUrl)}" placeholder="https://your-n8n.example/webhook/taproot">
             </div>
           </div>
         </fieldset>
@@ -139,7 +139,7 @@ function renderGuidedSettingsForm(model, csrf, options = {}) {
             </div>
             <div class="form-row">
               <label for="mqtt-topic-prefix">MQTT topic prefix</label>
-              <input id="mqtt-topic-prefix" name="mqtt_topic_prefix" type="text" value="${escapeHtml(model.mqttTopicPrefix)}" placeholder="smart-water">
+              <input id="mqtt-topic-prefix" name="mqtt_topic_prefix" type="text" value="${escapeHtml(model.mqttTopicPrefix)}" placeholder="taproot">
             </div>
           </div>
         </fieldset>
@@ -183,7 +183,7 @@ function renderAdvancedSettingsEditor(rawEnv, query, csrf) {
   const advancedOpen = query.get('advanced') === '1' ? ' open' : '';
   return `<details${advancedOpen}>
     <summary>Advanced Raw Editor</summary>
-    <p class="helper">This is the original plain-text env editor for people who prefer files and direct control.</p>
+    <p class="helper">Direct plain-text env editor.</p>
     <form method="POST" action="/settings/save">
       ${csrfField(csrf)}
       <div class="form-row">
@@ -299,7 +299,7 @@ function renderGuidedZonesForm(zoneData, csrf) {
       <div class="grid grid-2">
         <div class="card">
           <h2>Zone Setup</h2>
-          <p class="helper">These are the common fields most people actually need to change. Use the raw editor below if you want to add or remove zones or edit YAML directly.</p>
+          <p class="helper">Edit zone parameters here. Use the raw YAML editor below to add or remove zones.</p>
           ${zoneCards}
         </div>
         <div class="card">
@@ -319,7 +319,7 @@ function renderAdvancedZonesEditor(zoneData, query, csrf) {
   const advancedOpen = query.get('advanced') === '1' ? ' open' : '';
   return `<details${advancedOpen}>
     <summary>Advanced YAML Editor</summary>
-    <p class="helper">This is the original raw YAML editor for people who want full control.</p>
+    <p class="helper">Raw YAML editor for direct zone configuration.</p>
     <form method="POST" action="/zones/save">
       ${csrfField(csrf)}
       <div class="form-row">
@@ -521,7 +521,7 @@ function renderSmokeTest(zones, smokeZoneOptions, csrf) {
 function renderNextSteps() {
   return `<div class="stat-list">
     <div class="stat"><span>1.</span><span>Review zones in the Zones tab or keep using raw YAML.</span></div>
-    <div class="stat"><span>2.</span><span>Run <span class="inline-code">smart-water doctor</span> to verify connectivity.</span></div>
+    <div class="stat"><span>2.</span><span>Run <span class="inline-code">taproot doctor</span> to verify connectivity.</span></div>
     <div class="stat"><span>3.</span><span>Stay in shadow mode until you trust the decisions.</span></div>
   </div>`;
 }
@@ -538,7 +538,7 @@ export function loginPage(query) {
     ${noticeBanner(query)}
     <div class="card">
       <h2>Sign In</h2>
-      <p class="helper">This local web UI is protected by an optional password. Coders can still manage the project directly through the CLI and config files.</p>
+      <p class="helper">Enter your web UI password to continue.</p>
       <form method="POST" action="/login">
         <input type="hidden" name="next" value="${escapeHtml(next)}">
         <div class="form-row">
@@ -592,7 +592,7 @@ export function dashboardPage(query, zonesPath, csrf) {
 
     ${!setupComplete ? `<div class="card notice notice-warning" role="status">
       <h2>Finish Setup</h2>
-      <p class="helper">Add your Rachio API key in Settings to get started, or use <span class="inline-code">smart-water setup</span> from the terminal.</p>
+      <p class="helper">Add your Rachio API key in Settings to get started.</p>
       <div class="actions">
         <a class="btn btn-primary" href="/settings">Open Settings</a>
       </div>
@@ -730,7 +730,7 @@ export function settingsPage(query, csrf) {
     ${noticeBanner(query)}
     ${setupNeeded ? `<div class="card notice notice-warning" role="status">
       <h2>Finish Setup</h2>
-      <p class="helper">Add your Rachio API key below to get started. You can also use <span class="inline-code">smart-water setup</span> from the terminal.</p>
+      <p class="helper">Add your Rachio API key below to get started.</p>
     </div>` : ''}
     <div class="card">
       <h2>Settings</h2>
@@ -743,7 +743,7 @@ export function settingsPage(query, csrf) {
     </div>` : ''}
     <div class="card">
       <h2>Advanced Editing</h2>
-      <p class="helper">Use the raw env editor if you prefer direct control or want to edit less common settings such as SMTP or status page path.</p>
+      <p class="helper">Raw env editor for SMTP, status page path, and other advanced settings.</p>
       ${renderAdvancedSettingsEditor(envContent, query, csrf)}
     </div>
   `, 'settings', { authEnabled: authEnabled(), csrf });

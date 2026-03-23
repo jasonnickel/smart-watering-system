@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 
-// Smart Water System CLI
+// Taproot CLI
 // Entry point for all operations: scheduled runs, manual triggers, status checks
 //
 // Usage:
-//   smart-water run [--shadow]    Run the hourly decision cycle
-//   smart-water water             Manual watering trigger (all deficit zones)
-//   smart-water status            Show current system status
-//   smart-water status --json     Machine-readable status for n8n
-//   smart-water cleanup           Remove old data beyond retention period
+//   taproot run [--shadow]    Run the hourly decision cycle
+//   taproot water             Manual watering trigger (all deficit zones)
+//   taproot status            Show current system status
+//   taproot status --json     Machine-readable status for n8n
+//   taproot cleanup           Remove old data beyond retention period
 
 import './env.js';
 import { join } from 'node:path';
@@ -41,7 +41,7 @@ import { runDailyIntegrations } from './core/data-integration.js';
 import { getStatusJSON as getStatusJSONFromDB } from './db/state.js';
 import { connectMQTT, publishState, publishHADiscovery, disconnectMQTT } from './mqtt.js';
 
-const DB_PATH = process.env.DB_PATH || join(homedir(), '.smart-water', 'smart-water.db');
+const DB_PATH = process.env.DB_PATH || join(homedir(), '.taproot', 'taproot.db');
 
 // Track whether a command failure occurred for exit code
 let commandFailed = false;
@@ -90,9 +90,9 @@ async function main() {
       break;
     default:
       console.log('');
-      console.log('  Smart Water System');
+      console.log('  Taproot');
       console.log('');
-      console.log('  Usage: smart-water <command> [options]');
+      console.log('  Usage: taproot <command> [options]');
       console.log('');
       console.log('  Getting started:');
       console.log('    setup          Configure API keys and zones interactively');
@@ -143,7 +143,7 @@ async function confirmAction(question) {
 
 async function runSmokeTest(flags) {
   if (CONFIG.system.shadowMode) {
-    console.log('Smoke test requires live mode. Run smart-water go-live first, then re-run this command.');
+    console.log('Smoke test requires live mode. Run taproot go-live first, then re-run this command.');
     return;
   }
 
@@ -152,7 +152,7 @@ async function runSmokeTest(flags) {
   const skipPrompt = flags.includes('--yes');
 
   if (!Number.isFinite(zoneNumber) || zoneNumber <= 0) {
-    console.log('Usage: smart-water smoke-test --zone <number> [--minutes 1-3] [--yes]');
+    console.log('Usage: taproot smoke-test --zone <number> [--minutes 1-3] [--yes]');
     process.exit(1);
   }
   if (!Number.isFinite(minutes) || minutes < 1 || minutes > 3) {
@@ -518,7 +518,7 @@ function printStatus() {
   const todayStr = localDateStr();
   const status = getStatus(todayStr);
 
-  console.log('\n=== Smart Water System Status ===\n');
+  console.log('\n=== Taproot Status ===\n');
 
   if (status.lastRun) {
     console.log(`Last run: ${status.lastRun.timestamp} [${status.lastRun.window}] ${status.lastRun.decision} - ${status.lastRun.reason}`);

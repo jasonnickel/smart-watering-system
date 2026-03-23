@@ -6,7 +6,7 @@ import './env.js';
 import { log } from './log.js';
 
 const BROKER_URL = process.env.MQTT_BROKER_URL;
-const TOPIC_PREFIX = process.env.MQTT_TOPIC_PREFIX || 'smart-water';
+const TOPIC_PREFIX = process.env.MQTT_TOPIC_PREFIX || 'taproot';
 const HA_DISCOVERY_PREFIX = process.env.HA_DISCOVERY_PREFIX || 'homeassistant';
 
 let client = null;
@@ -26,7 +26,7 @@ export async function connectMQTT() {
     // Dynamic import - mqtt package is optional
     const mqtt = await import('mqtt');
     client = mqtt.default.connect(BROKER_URL, {
-      clientId: `smart-water-${process.pid}`,
+      clientId: `taproot-${process.pid}`,
       clean: true,
       connectTimeout: 5000,
     });
@@ -131,15 +131,15 @@ export function publishHADiscovery(zones) {
   if (!client?.connected) return;
 
   const device = {
-    identifiers: ['smart_water_system'],
-    name: 'Smart Water System',
+    identifiers: ['taproot'],
+    name: 'Taproot',
     manufacturer: 'DIY',
-    model: 'Smart Water v1',
+    model: 'Taproot v1',
   };
 
   // Per-zone moisture sensors
   for (const zone of zones) {
-    const id = `smart_water_zone_${zone.zone}_moisture`;
+    const id = `taproot_zone_${zone.zone}_moisture`;
     pub(`${HA_DISCOVERY_PREFIX}/sensor/${id}/config`, {
       name: `${zone.name} Moisture`,
       unique_id: id,
@@ -151,9 +151,9 @@ export function publishHADiscovery(zones) {
   }
 
   // Today's usage sensor
-  pub(`${HA_DISCOVERY_PREFIX}/sensor/smart_water_daily_gallons/config`, {
-    name: 'Smart Water Daily Gallons',
-    unique_id: 'smart_water_daily_gallons',
+  pub(`${HA_DISCOVERY_PREFIX}/sensor/taproot_daily_gallons/config`, {
+    name: 'Taproot Daily Gallons',
+    unique_id: 'taproot_daily_gallons',
     state_topic: `${TOPIC_PREFIX}/status`,
     value_template: '{{ value_json.todayUsage.gallons | round(0) }}',
     unit_of_measurement: 'gal',
@@ -161,9 +161,9 @@ export function publishHADiscovery(zones) {
   }, { prefix: false });
 
   // Weather source sensor
-  pub(`${HA_DISCOVERY_PREFIX}/sensor/smart_water_weather_source/config`, {
-    name: 'Smart Water Weather Source',
-    unique_id: 'smart_water_weather_source',
+  pub(`${HA_DISCOVERY_PREFIX}/sensor/taproot_weather_source/config`, {
+    name: 'Taproot Weather Source',
+    unique_id: 'taproot_weather_source',
     state_topic: `${TOPIC_PREFIX}/status`,
     value_template: '{{ value_json.weatherSource }}',
     device,

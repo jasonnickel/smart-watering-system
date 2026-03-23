@@ -1,12 +1,12 @@
 [Unit]
-Description=Smart Water System - Weekly Intelligence Briefing
+Description=Taproot - Weekly Intelligence Briefing
 After=network-online.target
 
 [Service]
 Type=oneshot
-WorkingDirectory=/opt/smart-water
+WorkingDirectory=/opt/taproot
 ExecStart=/usr/bin/node src/briefing-runner.js
-EnvironmentFile=/root/.smart-water/.env
+EnvironmentFile=/root/.taproot/.env
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=smart-water-briefing
+SyslogIdentifier=taproot-briefing

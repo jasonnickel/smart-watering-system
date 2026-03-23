@@ -46,7 +46,7 @@ export function currentNotice(query) {
     'zones-error': { tone: 'error', text: 'Zone configuration was not saved. Review the values and try again.' },
     'settings-saved': { tone: 'success', text: 'Settings saved. Login password changes take effect immediately. Restart the web UI only if you changed the host or port.' },
     'settings-error': { tone: 'error', text: 'Settings were not saved. Review the form values and try again.' },
-    'setup-saved': { tone: 'success', text: 'Guided setup saved. Run smart-water doctor or refresh the dashboard to verify connectivity.' },
+    'setup-saved': { tone: 'success', text: 'Guided setup saved. Run taproot doctor or refresh the dashboard to verify connectivity.' },
     'setup-error': { tone: 'error', text: 'Guided setup was not saved. Review the form values and try again.' },
     'smoke-started': { tone: 'warning', text: 'Live smoke test started. Watch Run History and your controller for the result.' },
     'login-required': { tone: 'warning', text: 'Sign in to use the web UI.' },
@@ -93,7 +93,7 @@ export function layout(title, content, activeTab, options = {}) {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>${escapeHtml(title)} - Smart Water</title>
+  <title>${escapeHtml(title)} - Taproot</title>
   <link rel="stylesheet" href="/styles.css?v=20260324">
   <script src="/theme.js"></script>
   <script src="/ai.js" defer></script>
@@ -103,7 +103,7 @@ export function layout(title, content, activeTab, options = {}) {
   <meta name="theme-color" content="#0b5fff">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <meta name="apple-mobile-web-app-title" content="Smart Water">
+  <meta name="apple-mobile-web-app-title" content="Taproot">
   <link rel="apple-touch-icon" href="/icon-192.svg">
 </head>
 <body>
@@ -111,8 +111,8 @@ export function layout(title, content, activeTab, options = {}) {
   <header class="header">
     <div class="header-inner">
       <div>
-        <h1>Smart Water System</h1>
-        <p>Optional browser setup for non-coders, plus the same file-and-CLI workflow for power users.</p>
+        <h1>Taproot</h1>
+        <p>Smart Irrigation System</p>
       </div>
       ${headerActionsHtml}
     </div>

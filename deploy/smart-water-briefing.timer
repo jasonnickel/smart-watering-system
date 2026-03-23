@@ -1,5 +1,5 @@
 [Unit]
-Description=Smart Water System - Weekly Intelligence Briefing Timer
+Description=Taproot - Weekly Intelligence Briefing Timer
 
 [Timer]
 OnCalendar=Sun *-*-* 07:00:00

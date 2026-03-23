@@ -21,7 +21,7 @@ import {
   enrichNotification, missedRunAlert, commandFailureAlert,
 } from './ai/notifications.js';
 
-const DB_PATH = process.env.DB_PATH || join(homedir(), '.smart-water', 'smart-water.db');
+const DB_PATH = process.env.DB_PATH || join(homedir(), '.taproot', 'taproot.db');
 
 async function sendAlert(alert) {
   let subject = alert.message;

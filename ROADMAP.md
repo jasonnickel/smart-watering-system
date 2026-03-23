@@ -1,4 +1,4 @@
-# Smart Water System - Feature Roadmap
+# Taproot - Feature Roadmap
 
 Each feature below addresses a specific, documented real-world complaint from Rachio community forums and power user communities. Features are ordered by impact and implementation complexity.
 
@@ -150,7 +150,7 @@ CREATE TABLE IF NOT EXISTS precipitation_audit (
 - Served by n8n (static file response on a webhook) or a lightweight file server
 - Content: current soil moisture per zone (color-coded bars), last 5 decisions with reasons, today's forecast, month-to-date cost, weather source status
 - No JavaScript framework - plain HTML with inline CSS
-- Regenerated as `/root/.smart-water/status.html` after each run
+- Regenerated as `/root/.taproot/status.html` after each run
 
 **Files to create:**
 - `src/status-page.js` - generate HTML from SQLite data
@@ -291,12 +291,12 @@ CREATE TABLE IF NOT EXISTS zone_tuning (
 
 **Implementation:**
 - After each run, publish current state to MQTT topics:
-  - `smart-water/status` - overall system status (JSON)
-  - `smart-water/zone/{number}/moisture` - per-zone moisture percentage
-  - `smart-water/zone/{number}/balance` - per-zone balance in inches
-  - `smart-water/decision` - last decision with reason
-  - `smart-water/weather` - current weather data and source
-  - `smart-water/finance` - daily and monthly cost data
+  - `taproot/status` - overall system status (JSON)
+  - `taproot/zone/{number}/moisture` - per-zone moisture percentage
+  - `taproot/zone/{number}/balance` - per-zone balance in inches
+  - `taproot/decision` - last decision with reason
+  - `taproot/weather` - current weather data and source
+  - `taproot/finance` - daily and monthly cost data
 - HA auto-discovery via MQTT discovery protocol (optional)
 - Retain messages so HA gets current state on restart
 - Use the existing MQTT broker at 192.168.68.110

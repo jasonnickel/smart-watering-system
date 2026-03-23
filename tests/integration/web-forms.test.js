@@ -30,7 +30,7 @@ describe('Guided settings editor', () => {
       notificationEmail: 'yard@example.com',
       webhookUrl: '',
       mqttBrokerUrl: '',
-      mqttTopicPrefix: 'smart-water',
+      mqttTopicPrefix: 'taproot',
       debugLevel: '2',
       shadowMode: false,
       lat: '40.015',

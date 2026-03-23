@@ -1,4 +1,4 @@
-// Configuration for Smart Water System
+// Configuration for Taproot
 // Zone profiles, thresholds, and rates live here. Secrets come from .env.
 // [3.1] Zone profiles can be overridden by zones.yaml.
 
@@ -212,7 +212,7 @@ const CONFIG = {
   // [5.1] MQTT for Home Assistant
   mqtt: {
     brokerUrl: process.env.MQTT_BROKER_URL || '',
-    topicPrefix: process.env.MQTT_TOPIC_PREFIX || 'smart-water',
+    topicPrefix: process.env.MQTT_TOPIC_PREFIX || 'taproot',
   },
 
   watchdog: {

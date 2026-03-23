@@ -9,7 +9,7 @@
 ## Before Opening A Bug
 
 - Re-run the command in shadow mode if possible
-- Check `journalctl -u smart-water -f`
+- Check `journalctl -u taproot -f`
 - Include relevant config context without posting secrets
 - Mention whether you are using Ambient Weather, MQTT, n8n, and systemd timers
 

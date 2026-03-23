@@ -1,13 +1,13 @@
 [Unit]
-Description=Smart Water System - Watchdog Alert
+Description=Taproot - Watchdog Alert
 After=network-online.target
 
 [Service]
 Type=oneshot
 User=jason
-WorkingDirectory=/home/jason/smart-water
+WorkingDirectory=/home/jason/taproot
 ExecStart=/usr/bin/node src/watchdog.js
-EnvironmentFile=/home/jason/.smart-water/.env
+EnvironmentFile=/home/jason/.taproot/.env
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=smart-water-watchdog
+SyslogIdentifier=taproot-watchdog

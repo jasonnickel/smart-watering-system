@@ -1,4 +1,4 @@
-// API route handlers for the smart water web UI.
+// API route handlers for the Taproot web UI.
 // GET handlers receive (req, res) or (req, res, url). POST handlers receive (req, res, body).
 
 import { getMoistureHistory } from '../charts.js';

@@ -1,5 +1,5 @@
 [Unit]
-Description=Smart Water System - Hourly Irrigation Check
+Description=Taproot - Hourly Irrigation Check
 
 [Timer]
 OnCalendar=*-*-* *:00:00

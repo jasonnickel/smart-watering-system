@@ -6,7 +6,7 @@ Please do not open a public GitHub issue for security-sensitive problems.
 
 Instead:
 
-- Email `jason@jasonnickel.com` with the subject line `smart-watering-system security report`, or
+- Email `jason@jasonnickel.com` with the subject line `taproot security report`, or
 - Open a private GitHub security advisory if that option is enabled for the repository.
 
 Useful details include:

@@ -1,7 +1,7 @@
-// Service Worker for Smart Water PWA
+// Service Worker for Taproot PWA
 // Minimal - just enables "Add to Home Screen" and basic offline shell
 
-const CACHE_NAME = 'smart-water-v13';
+const CACHE_NAME = 'taproot-v1';
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();
@@ -36,7 +36,7 @@ self.addEventListener('fetch', (event) => {
           if (event.request.mode === 'navigate') {
             return new Response(
               '<html><body style="font-family:sans-serif;padding:40px;text-align:center;">' +
-              '<h1>Smart Water</h1><p>You are offline. Connect to your network to view the dashboard.</p>' +
+              '<h1>Taproot</h1><p>You are offline. Connect to your network to view the dashboard.</p>' +
               '</body></html>',
               { headers: { 'Content-Type': 'text/html' } }
             );

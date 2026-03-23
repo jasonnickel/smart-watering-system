@@ -18,7 +18,7 @@ describe('Deployment assets', () => {
     const summaryService = readFileSync(join(deployDir, 'smart-water-summary.service'), 'utf8');
 
     assert.match(summaryService, /^User=jason$/m);
-    assert.match(summaryService, /^WorkingDirectory=\/home\/jason\/smart-water$/m);
-    assert.match(summaryService, /^EnvironmentFile=\/home\/jason\/\.smart-water\/\.env$/m);
+    assert.match(summaryService, /^WorkingDirectory=\/home\/jason\/taproot$/m);
+    assert.match(summaryService, /^EnvironmentFile=\/home\/jason\/\.taproot\/\.env$/m);
   });
 });

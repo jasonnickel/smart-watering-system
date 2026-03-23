@@ -1,5 +1,5 @@
 [Unit]
-Description=Smart Water System - Daily Summary (6am)
+Description=Taproot - Daily Summary (6am)
 
 [Timer]
 OnCalendar=*-*-* 06:00:00

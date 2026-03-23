@@ -16,7 +16,7 @@ afterEach(() => {
 });
 
 function makeTempDBPath() {
-  const dir = mkdtempSync(join(tmpdir(), 'smart-water-lock-'));
+  const dir = mkdtempSync(join(tmpdir(), 'taproot-lock-'));
   tempDirs.push(dir);
   return join(dir, 'state.db');
 }

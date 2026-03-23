@@ -15,7 +15,7 @@ import {
 import CONFIG from './config.js';
 
 const OUTPUT_PATH = process.env.STATUS_PAGE_PATH
-  || join(homedir(), '.smart-water', 'status.html');
+  || join(homedir(), '.taproot', 'status.html');
 
 /**
  * Generate and write the status page HTML.
@@ -107,7 +107,7 @@ export function generateStatusPage() {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Smart Water Status</title>
+  <title>Taproot Status</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f5; color: #333; padding: 16px; }
@@ -121,7 +121,7 @@ export function generateStatusPage() {
 </head>
 <body>
   <div class="container">
-    <h1>Smart Water System</h1>
+    <h1>Taproot</h1>
     <div class="subtitle">Updated ${new Date().toLocaleString('en-US', { timeZone: CONFIG.location.timezone })}</div>
 
     <div class="card">

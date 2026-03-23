@@ -110,7 +110,7 @@ function buildCompactContext() {
 
   const lastRun = status.lastRun;
 
-  return `You are the AI assistant for the Smart Water System. Answer questions about the yard using ONLY this data. Be concise (2-5 sentences). Use specific numbers.
+  return `You are the AI assistant for Taproot. Answer questions about the yard using ONLY this data. Be concise (2-5 sentences). Use specific numbers.
 
 DATE: ${todayStr}
 WEATHER: ${weatherLine}
