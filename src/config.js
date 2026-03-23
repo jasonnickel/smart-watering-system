@@ -3,7 +3,7 @@
 // [3.1] Zone profiles can be overridden by zones.yaml.
 
 import './env.js';
-import { loadZoneConfig } from './yaml-loader.js';
+import { loadZoneConfig, loadRateConfig } from './yaml-loader.js';
 
 function envNumber(name, fallback) {
   const raw = process.env[name];
@@ -158,13 +158,34 @@ const CONFIG = {
     nutrientLeachingGuardDays: 1,
   },
 
-  finance: {
-    billingCycleStartDay: 15,
-    waterRates: [
-      { thresholdGallons: 5000, ratePer1000Gal: 6.06 },
-      { thresholdGallons: 20000, ratePer1000Gal: 7.89 },
-    ],
-  },
+  finance: (() => {
+    const rates = loadRateConfig();
+    if (rates) {
+      return {
+        provider: rates.provider,
+        effectiveDate: rates.effectiveDate,
+        billingCycleStartDay: rates.billingCycleDay,
+        awcGallons: rates.awcThousands * 1000,
+        waterRates: rates.waterRates,
+        fixedCharges: rates.fixedCharges,
+        wastewaterRatePer1000Gal: rates.wastewaterRatePer1000Gal,
+      };
+    }
+    // Fallback defaults if no rates.yaml exists
+    return {
+      provider: 'Default',
+      effectiveDate: '',
+      billingCycleStartDay: 25,
+      awcGallons: 5000,
+      waterRates: [
+        { name: 'Tier 1', thresholdGallons: 5000, ratePer1000Gal: 6.44 },
+        { name: 'Tier 2', thresholdGallons: 20000, ratePer1000Gal: 8.38 },
+        { name: 'Tier 3', thresholdGallons: 999999, ratePer1000Gal: 9.65 },
+      ],
+      fixedCharges: { waterBaseFee: 13.23, wastewaterService: 12.85, drainage: 12.92 },
+      wastewaterRatePer1000Gal: 3.86,
+    };
+  })(),
 
   // Conservative defaults when weather APIs are unavailable
   degradedMode: {

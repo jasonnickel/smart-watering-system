@@ -1,0 +1,43 @@
+# City of Golden, CO - Water Rate Schedule
+# Effective January 1, 2026 (6.2% increase approved November 2025)
+# Source: cityofgolden.gov/services/water_service.php
+#
+# Update this file when your utility publishes new rates.
+# The system reads it at startup - restart the web UI after changes.
+
+provider: City of Golden
+effective_date: "2026-01-01"
+billing_cycle_day: 25
+billing_period: monthly
+
+# Average Winter Consumption (AWC) in thousands of gallons.
+# Golden sets this from your February usage, minimum 5.
+# Check your bill for "AWC ON THIS ACCOUNT" value.
+awc_thousands: 5
+
+# Monthly fixed charges (not affected by irrigation usage)
+fixed_charges:
+  water_base_fee: 13.23
+  wastewater_service: 12.85
+  drainage: 12.92
+  # Trash is excluded - not water-related
+
+# Tiered water rates per 1,000 gallons
+# Golden uses AWC-relative tiers:
+#   Tier 1: 0 to AWC
+#   Tier 2: AWC to AWC + 15,000 gallons
+#   Tier 3: everything above Tier 2
+water_tiers:
+  - name: "Tier 1 (0 to AWC)"
+    threshold_gallons: 5000
+    rate_per_1000_gal: 6.44
+  - name: "Tier 2 (AWC to AWC + 15k)"
+    threshold_gallons: 20000
+    rate_per_1000_gal: 8.38
+  - name: "Tier 3 (above AWC + 15k)"
+    threshold_gallons: 999999
+    rate_per_1000_gal: 9.65
+
+# Wastewater is billed at a fixed monthly amount based on February usage.
+# It does NOT increase with summer irrigation. This field is for reference only.
+wastewater_rate_per_1000_gal: 3.86
