@@ -6,6 +6,7 @@ import {
   getRecentDiscrepancies,
   getRecentPrecipitationAudits,
 } from '../db/state.js';
+import { analyzeETDrift, analyzeSoilConfig, analyzeNDVITrend } from '../core/data-integration.js';
 
 function toNumber(value) {
   const parsed = Number(value);
@@ -95,6 +96,16 @@ export function collectAdvisorInsights(options = {}) {
       summary: `Flow meter readings have stayed ${direction} than the model for ${suggestion.run_count} runs. ${likelyCause}`,
     });
   }
+
+  // Data source integrations
+  const etDrift = analyzeETDrift();
+  if (etDrift) insights.push(etDrift);
+
+  const soilMismatch = analyzeSoilConfig();
+  if (soilMismatch) insights.push(soilMismatch);
+
+  const ndviTrend = analyzeNDVITrend();
+  if (ndviTrend) insights.push(ndviTrend);
 
   return insights
     .sort((left, right) => severityRank(left.severity) - severityRank(right.severity))
