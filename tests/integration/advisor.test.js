@@ -78,6 +78,7 @@ describe('Advisor insights', () => {
             {
               message: {
                 content: 'Conditions look stable overall. Keep an eye on the weather-source disagreement before trusting a rain skip.',
+                reasoning_content: 'The user has one discrepancy and rain in the forecast. Sources disagree so rain skip confidence is low.',
               },
             },
           ],
@@ -100,10 +101,10 @@ describe('Advisor insights', () => {
       });
 
       assert.equal(narrative, 'Conditions look stable overall. Keep an eye on the weather-source disagreement before trusting a rain skip.');
-      assert.equal(request.url, 'https://api.moonshot.cn/v1/chat/completions');
+      assert.equal(request.url, 'https://api.moonshot.ai/v1/chat/completions');
 
       const body = JSON.parse(request.options.body);
-      assert.equal(body.model, 'moonshot-v1-8k');
+      assert.equal(body.model, 'kimi-k2-thinking');
       assert.equal(body.temperature, 0.2);
       assert.match(request.options.headers.Authorization, /^Bearer test-key$/);
       assert.equal(body.messages[0].role, 'system');
