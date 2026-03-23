@@ -6,7 +6,9 @@ import { URL } from 'node:url';
 import { execFile } from 'node:child_process';
 import yaml from 'js-yaml';
 
-import { readEnvFile, readShadowMode, writeEnvValue } from '../env.js';
+import {
+  readEnvFile, readEnvValueFromContent, readShadowMode, writeEnvValue,
+} from '../env.js';
 import {
   applyGuidedSettings,
   buildZoneConfigYaml,
@@ -18,6 +20,7 @@ import { localDateStr } from '../time.js';
 import { getStatusJSON } from '../db/state.js';
 import { log } from '../log.js';
 import {
+  initAuth,
   authEnabled, hasValidSession, createSession, clearSession,
   verifyPassword, safeNextPath, AUTH_COOKIE_NAME, SESSION_TTL_MS,
 } from './auth.js';
@@ -27,6 +30,15 @@ import {
 } from './pages.js';
 
 // -- HTTP helpers ------------------------------------------------------------
+
+const PUBLIC_PATHS = new Set([
+  '/login',
+  '/manifest.json',
+  '/sw.js',
+  '/icon-192.svg',
+  '/icon-512.svg',
+  '/styles.css',
+]);
 
 function parseBody(req) {
   return new Promise(resolve => {
@@ -81,12 +93,22 @@ function serveStatic(res, urlPath, publicDir) {
   }
 }
 
+function syncWebUiAuth(envContent) {
+  const password = readEnvValueFromContent(envContent, 'WEB_UI_PASSWORD') || '';
+  if (password) {
+    process.env.WEB_UI_PASSWORD = password;
+  } else {
+    delete process.env.WEB_UI_PASSWORD;
+  }
+  initAuth(password);
+}
+
 function requireAuth(req, res, url) {
   if (!authEnabled()) return true;
-  if (url.pathname === '/login') return true;
+  if (PUBLIC_PATHS.has(url.pathname)) return true;
   if (hasValidSession(req)) return true;
 
-  if (url.pathname === '/api/status') {
+  if (url.pathname.startsWith('/api/')) {
     serveJSON(res, { error: 'authentication required' }, 401);
   } else {
     redirect(res, `/login?msg=login-required&next=${encodeURIComponent(url.pathname + url.search)}`);
@@ -275,6 +297,7 @@ export function createRequestHandler({ host, port, appRoot, envPath, zonesPath, 
             const nextContent = applyGuidedSettings(readEnvFile(), values);
             mkdirSync(dirname(envPath), { recursive: true });
             writeFileSync(envPath, nextContent, { mode: 0o600 });
+            syncWebUiAuth(nextContent);
             log(1, `Guided settings updated via web UI: ${path}`);
             return redirect(res, path === '/setup/save' ? '/setup?msg=setup-saved' : '/settings?msg=settings-saved');
           } catch (err) {
@@ -317,6 +340,7 @@ export function createRequestHandler({ host, port, appRoot, envPath, zonesPath, 
           const envContent = body.get('env') || '';
           mkdirSync(dirname(envPath), { recursive: true });
           writeFileSync(envPath, envContent, { mode: 0o600 });
+          syncWebUiAuth(envContent);
           log(1, 'Environment config updated via raw web UI');
           return redirect(res, '/settings?msg=settings-saved&advanced=1');
         }

@@ -10,6 +10,11 @@ import { homedir } from 'node:os';
 
 import CONFIG from './config.js';
 import { log } from './log.js';
+import {
+  collectAdvisorInsights,
+  formatAdvisorInsight,
+  generateSummaryNarrative,
+} from './ai/advisor.js';
 import { formatTimestamp, localDateStr, localYesterdayStr, localMonth, minutesSinceTimestamp } from './time.js';
 import {
   initDB, getStatus, getRunsSince, getFinanceData,
@@ -42,6 +47,7 @@ async function main() {
   const yesterdayUsage = getDailyUsage(yesterdayStr);
   const discrepancies = getRecentDiscrepancies(24);
   const precipAudits = getRecentPrecipitationAudits(7);
+  const advisorInsights = collectAdvisorInsights();
 
   // Weather source status
   const ambientCache = getCachedWeather('ambient');
@@ -59,6 +65,11 @@ async function main() {
   const overnightRuns = recentRuns.filter(r => r.phase === 'DECIDE');
   const waterRuns = overnightRuns.filter(r => r.decision === 'WATER');
   const skipRuns = overnightRuns.filter(r => r.decision === 'SKIP');
+  const overnightText = waterRuns.length > 0
+    ? `Watered ${waterRuns.length} time(s): ${waterRuns.map(r => r.reason).join(', ')}`
+    : skipRuns.length > 0
+      ? `Skipped: ${skipRuns[0].reason}`
+      : 'No activity recorded';
 
   // Forecast
   const forecastCache = getCachedWeather('openmeteo_forecast');
@@ -79,6 +90,24 @@ async function main() {
     }
   }
 
+  let aiNarrative = null;
+  try {
+    aiNarrative = await generateSummaryNarrative({
+      overnightSummary: overnightText,
+      weatherStatus,
+      forecastText,
+      yesterdayUsage,
+      monthlyUsage: {
+        gallons: finance?.monthly_gallons ?? 0,
+        cost: finance?.monthly_cost ?? 0,
+      },
+      discrepancies,
+      advisorInsights,
+    });
+  } catch (err) {
+    log(1, `AI advisor narrative unavailable: ${err.message}`);
+  }
+
   // Build HTML
   const html = buildEmailHTML({
     todayStr,
@@ -93,6 +122,8 @@ async function main() {
     finance,
     discrepancies,
     precipAudits,
+    advisorInsights,
+    aiNarrative,
   });
 
   const subject = `Smart Water Daily Report - ${todayStr}`;
@@ -128,6 +159,12 @@ function buildEmailHTML(d) {
        <ul>${d.discrepancies.map(disc => `<li>${disc.reason}</li>`).join('')}</ul>`
     : '';
 
+  const advisorSection = d.advisorInsights.length > 0
+    ? `<h3 style="background:#e8f5e9;padding:8px;border-radius:4px;margin-top:20px;">Advisor Insights</h3>
+       <ul>${d.advisorInsights.map(insight => `<li>${formatAdvisorInsight(insight)}</li>`).join('')}</ul>
+       <p style="font-size:12px;color:#666;">Advisory only: these notes never change the deterministic watering decision engine on their own.</p>`
+    : '';
+
   // Weekly precipitation bias check
   let precipBiasSection = '';
   if (d.precipAudits.length >= 3) {
@@ -142,6 +179,9 @@ function buildEmailHTML(d) {
   return `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;font-size:14px;color:#333;line-height:1.6;max-width:600px;">
     <h2 style="color:#1565c0;border-bottom:2px solid #1565c0;padding-bottom:5px;">Smart Water Daily Report</h2>
     <p>${d.todayStr}</p>
+
+    ${d.aiNarrative ? `<h3 style="background:#ede7f6;padding:8px;border-radius:4px;">Kimi Advisor</h3>
+    <p>${d.aiNarrative}</p>` : ''}
 
     <h3 style="background:#e8f5e9;padding:8px;border-radius:4px;">Overnight Activity</h3>
     <p>${overnightText}</p>
@@ -162,6 +202,7 @@ function buildEmailHTML(d) {
     <p>${d.weatherStatus}</p>
 
     ${discrepancySection}
+    ${advisorSection}
     ${precipBiasSection}
 
     <p style="margin-top:30px;font-size:11px;color:#999;">Smart Water System - automated daily report</p>

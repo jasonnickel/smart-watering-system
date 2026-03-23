@@ -15,6 +15,7 @@ import { localDateStr, minutesSinceTimestamp } from '../time.js';
 import {
   getStatus, getRunsSince, getFinanceData, getCachedWeather,
 } from '../db/state.js';
+import { collectAdvisorInsights } from '../ai/advisor.js';
 import { authEnabled, safeNextPath } from './auth.js';
 import {
   layout, noticeBanner, escapeHtml, badge, button,
@@ -322,6 +323,54 @@ function renderAdvancedZonesEditor(zoneData, query) {
   </details>`;
 }
 
+function parseHistoryHours(query) {
+  const raw = query.get('hours') || '24';
+  const parsed = parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return 24;
+  }
+  return Math.min(parsed, 24 * 30);
+}
+
+function insightTone(severity) {
+  switch (severity) {
+    case 'critical': return 'error';
+    case 'warning': return 'warning';
+    case 'success': return 'success';
+    default: return 'neutral';
+  }
+}
+
+function insightLabel(severity) {
+  switch (severity) {
+    case 'critical': return 'Critical';
+    case 'warning': return 'Warning';
+    case 'success': return 'Stable';
+    default: return 'Info';
+  }
+}
+
+function renderAdvisorSection() {
+  const insights = collectAdvisorInsights();
+  const content = insights.length > 0
+    ? `<div class="advisor-list">
+        ${insights.map(insight => `<div class="advisor-item">
+          <div class="advisor-head">
+            ${badge(insightLabel(insight.severity), insightTone(insight.severity))}
+            <span class="advisor-title">${escapeHtml(insight.title)}</span>
+          </div>
+          <p class="helper">${escapeHtml(insight.summary)}</p>
+        </div>`).join('')}
+      </div>`
+    : '<p class="helper">No weather-confidence, rain-gauge, or flow-calibration issues have crossed the advisory thresholds recently.</p>';
+
+  return `<div class="card">
+    <h2>Advisor Insights</h2>
+    <p class="helper">Advisory-only suggestions inspired by the future-work plan. These notes never change the deterministic watering engine on their own.</p>
+    ${content}
+  </div>`;
+}
+
 // -- Page renderers ----------------------------------------------------------
 
 export function loginPage(query) {
@@ -487,6 +536,7 @@ export function dashboardPage(query, zonesPath) {
     </div>
 
     ${forecastHtml ? `<div class="card"><h2>Forecast</h2>${forecastHtml}</div>` : ''}
+    ${renderAdvisorSection()}
 
     <div class="card">
       <h2>Quick Actions</h2>
@@ -513,7 +563,7 @@ export function dashboardPage(query, zonesPath) {
 }
 
 export function logsPage(query) {
-  const hours = parseInt(query.get('hours') || '24', 10);
+  const hours = parseHistoryHours(query);
   const since = new Date(Date.now() - hours * 3600000).toISOString();
   const runs = getRunsSince(since);
 
@@ -615,4 +665,3 @@ export function setupPage(query) {
 export function chartsPage() {
   return layout('Charts', chartsPageContent(), 'charts', { authEnabled: authEnabled() });
 }
-

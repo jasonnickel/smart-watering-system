@@ -13,7 +13,7 @@ import { log } from './log.js';
 import { notify } from './notify.js';
 import { minutesSinceTimestamp } from './time.js';
 
-const PRECIP_DISCREPANCY_THRESHOLD = 0.15; // inches
+const PRECIP_DISCREPANCY_THRESHOLD = CONFIG.weatherValidation.precipDiscrepancyThreshold ?? 0.15;
 
 /**
  * Get current weather with degraded-mode fallback and quality alerts.
