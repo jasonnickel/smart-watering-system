@@ -13,7 +13,10 @@
     if (theme) {
       html.setAttribute('data-theme', theme);
     } else {
-      html.removeAttribute('data-theme');
+      // No stored preference - detect from OS and set explicitly so CSS
+      // only needs [data-theme] selectors (no duplicated @media block).
+      var auto = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      html.setAttribute('data-theme', auto);
     }
     updateIcon();
   }

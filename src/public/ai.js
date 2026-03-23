@@ -1,6 +1,34 @@
 // Client-side AI interactions: chat and narrative expansion
 (function () {
   document.addEventListener('DOMContentLoaded', function () {
+    // -- Secret field toggle (data-action) ------------------------------------
+    document.addEventListener('click', function (e) {
+      var btn = e.target.closest('[data-action]');
+      if (!btn) return;
+      var field = btn.closest('.secret-field');
+      if (!field) return;
+      var action = btn.getAttribute('data-action');
+      if (action === 'secret-edit') {
+        field.classList.add('secret-editing');
+        var input = field.querySelector('input');
+        if (input) input.focus();
+      } else if (action === 'secret-cancel') {
+        field.classList.remove('secret-editing');
+        var input = field.querySelector('input');
+        if (input) input.value = '';
+      }
+    });
+
+    // -- Confirm dialog on forms (data-confirm) --------------------------------
+    document.addEventListener('submit', function (e) {
+      var form = e.target.closest('[data-confirm]');
+      if (!form) return;
+      var message = form.getAttribute('data-confirm');
+      if (message && !confirm(message)) {
+        e.preventDefault();
+      }
+    });
+
     initChat();
     initNarratives();
     initBriefing();

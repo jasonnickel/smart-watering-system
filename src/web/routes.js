@@ -1,62 +1,49 @@
 // HTTP request handler and route dispatch for the web UI.
+// Thin dispatcher - handlers live in api-handlers.js and action-handlers.js.
 
-import { dirname, resolve } from 'node:path';
-import { mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { readFileSync, realpathSync } from 'node:fs';
 import { URL } from 'node:url';
-import { execFile } from 'node:child_process';
-import yaml from 'js-yaml';
 
-import {
-  readEnvFile, readEnvValueFromContent, readShadowMode, writeEnvValue,
-} from '../env.js';
-import {
-  applyGuidedSettings,
-  buildZoneConfigYaml,
-  normalizeSoilProfiles,
-  normalizeZones,
-} from '../web-forms.js';
-import { getMoistureHistory } from '../charts.js';
-import { backfillWeatherHistory } from '../api/openmeteo.js';
-import { localDateStr } from '../time.js';
-import {
-  getStatusJSON, getRunsSince,
-  getRecentReferenceET, getNDVIHistory, getRecentETValidation,
-  getWeatherHistory,
-} from '../db/state.js';
+import { readEnvValueFromContent } from '../env.js';
 import { log } from '../log.js';
-import { aiNarrationEnabled } from '../ai/advisor.js';
-import { askYard } from '../ai/chat.js';
-import { generateNarrative } from '../ai/narratives.js';
-import { buildBriefingContext, generateBriefingNarrative } from '../ai/briefing.js';
-import { buildSatelliteAnalysis } from '../ai/satellite.js';
-import CONFIG from '../config.js';
-import { getSoilProfile } from '../api/usda-soil.js';
-import { getYesterdayReferenceET, backfillReferenceET } from '../api/coagmet.js';
-import { ndviEnabled, getNDVIStats, getNDVIImage } from '../api/ndvi.js';
+import { SECURITY_HEADERS, serveJSON, redirect } from './http.js';
 import {
   initAuth,
-  authEnabled, hasValidSession, createSession, clearSession,
-  verifyPassword, safeNextPath, verifyCsrf, getCsrfToken,
-  checkLoginRate, recordLoginFailure, clearLoginFailures,
-  AUTH_COOKIE_NAME, SESSION_TTL_MS,
+  authEnabled, hasValidSession,
+  verifyCsrf, getCsrfToken,
 } from './auth.js';
 import {
   loginPage, dashboardPage, logsPage, zonesPage,
   settingsPage, chartsPage, briefingPage, satellitePage,
 } from './pages.js';
 
+import {
+  handleStatus, handleCharts, handleAIStatus,
+  handleReferenceETHistory, handleNDVIHistory,
+  handleETValidationHistory, handleWeatherHistory,
+  handleSoil, handleReferenceET, handleNDVI,
+  handleSatelliteAnalysis, handleNDVIImage,
+  handleAIChat, handleAINarrative, handleAIBriefing,
+  handleBackfillReferenceET, handleBackfillWeather,
+} from './api-handlers.js';
+
+import {
+  handleLogin, handleLogout, handleWater, handleShadowToggle,
+  handleSmokeTest, handleSettingsGuidedSave, handleSettingsRawSave,
+  handleZonesGuidedSave, handleZonesRawSave,
+} from './action-handlers.js';
+
 // -- Constants ---------------------------------------------------------------
 
 const MAX_BODY_BYTES = 64 * 1024;
 
-const SECURITY_HEADERS = {
-  'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; object-src 'none'; frame-ancestors 'none'",
-  'X-Content-Type-Options': 'nosniff',
-  'X-Frame-Options': 'DENY',
-  'Referrer-Policy': 'no-referrer',
+const MIME = {
+  '.json': 'application/json',
+  '.js': 'text/javascript',
+  '.svg': 'image/svg+xml',
+  '.css': 'text/css',
 };
-
-// -- HTTP helpers ------------------------------------------------------------
 
 const PUBLIC_PATHS = new Set([
   '/login',
@@ -70,8 +57,10 @@ const PUBLIC_PATHS = new Set([
   '/satellite.js',
 ]);
 
+// -- HTTP helpers ------------------------------------------------------------
+
 function parseBody(req) {
-  return new Promise((resolve, reject) => {
+  return new Promise((done, reject) => {
     let body = '';
     let bytes = 0;
     req.on('data', chunk => {
@@ -83,19 +72,9 @@ function parseBody(req) {
       }
       body += chunk;
     });
-    req.on('end', () => resolve(new URLSearchParams(body)));
+    req.on('end', () => done(new URLSearchParams(body)));
     req.on('error', reject);
   });
-}
-
-function redirect(res, url, extraHeaders = {}) {
-  res.writeHead(302, {
-    Location: url,
-    'Cache-Control': 'no-store',
-    ...SECURITY_HEADERS,
-    ...extraHeaders,
-  });
-  res.end();
 }
 
 function serve(res, html, statusCode = 200, extraHeaders = {}) {
@@ -108,27 +87,11 @@ function serve(res, html, statusCode = 200, extraHeaders = {}) {
   res.end(html);
 }
 
-function serveJSON(res, payload, statusCode = 200) {
-  res.writeHead(statusCode, {
-    'Content-Type': 'application/json; charset=utf-8',
-    'Cache-Control': 'no-store',
-    ...SECURITY_HEADERS,
-  });
-  res.end(JSON.stringify(payload));
-}
-
-function serveStatic(res, urlPath, publicDir) {
-  const MIME = {
-    '.json': 'application/json',
-    '.js': 'text/javascript',
-    '.svg': 'image/svg+xml',
-    '.css': 'text/css',
-  };
+function serveStatic(res, urlPath, publicDir, resolvedPublic) {
   const ext = urlPath.slice(urlPath.lastIndexOf('.'));
   const filePath = resolve(publicDir, urlPath.replace(/^\//, ''));
 
   // Path containment: reject traversal attempts
-  const resolvedPublic = realpathSync(publicDir);
   if (!filePath.startsWith(resolvedPublic)) {
     res.writeHead(400, SECURITY_HEADERS);
     res.end('Bad request');
@@ -173,141 +136,72 @@ function requireAuth(req, res, url) {
   return false;
 }
 
-function getClientIP(req) {
-  return req.socket?.remoteAddress || 'unknown';
-}
+// -- Route tables ------------------------------------------------------------
 
-function parsePositiveNumber(rawValue, fallback, { min = 0, max = Infinity } = {}) {
-  if (rawValue == null || rawValue === '') return fallback;
-  const value = Number(rawValue);
-  if (!Number.isFinite(value)) return fallback;
-  return Math.min(Math.max(value, min), max);
-}
-
-function parseLastIntervalBehavior(rawValue) {
-  if (!rawValue) return undefined;
-  const value = String(rawValue).toUpperCase();
-  return ['SKIP', 'SHORTEN', 'EXTEND'].includes(value) ? value : undefined;
-}
-
-// -- Form body readers -------------------------------------------------------
-
-function readGuidedSettingsFromBody(body) {
-  const lat = body.get('lat') || '39.73220';
-  const lon = body.get('lon') || '-105.21940';
-  const timezone = String(body.get('location_timezone') || 'America/Denver').trim();
-  const debugLevel = String(body.get('debug_level') || '1').trim();
-  const shadowMode = body.get('shadow_mode') !== 'false';
-  const webPort = String(body.get('web_port') || '').trim();
-  const webHost = String(body.get('web_host') || '').trim();
-  const webhookUrl = String(body.get('webhook_url') || '').trim();
-  const notificationEmail = String(body.get('notification_email') || '').trim();
-
-  const latNumber = parseFloat(lat);
-  const lonNumber = parseFloat(lon);
-  if (!Number.isFinite(latNumber) || latNumber < -90 || latNumber > 90) {
-    throw new Error('Latitude must be between -90 and 90');
-  }
-  if (!Number.isFinite(lonNumber) || lonNumber < -180 || lonNumber > 180) {
-    throw new Error('Longitude must be between -180 and 180');
-  }
-  if (!timezone) {
-    throw new Error('Timezone is required');
-  }
-
-  // Validate timezone against IANA list
-  try {
-    const valid = Intl.supportedValuesOf('timeZone');
-    if (!valid.includes(timezone)) {
-      throw new Error(`Unknown timezone: ${timezone}`);
-    }
-  } catch (err) {
-    if (err.message.startsWith('Unknown timezone')) throw err;
-    // Intl.supportedValuesOf not available on older Node - fall back to basic check
-    if (!/^[A-Za-z_/+-]+$/.test(timezone)) {
-      throw new Error('Timezone contains invalid characters');
-    }
-  }
-
-  if (!['0', '1', '2'].includes(debugLevel)) {
-    throw new Error('Debug level must be 0, 1, or 2');
-  }
-  if (webPort) {
-    const portNumber = parseInt(webPort, 10);
-    if (!Number.isFinite(portNumber) || portNumber < 1 || portNumber > 65535) {
-      throw new Error('Web port must be between 1 and 65535');
-    }
-  }
-  if (webHost && /\s/.test(webHost)) {
-    throw new Error('Web host cannot contain spaces');
-  }
-  if (webhookUrl) {
-    const url = new URL(webhookUrl);
-    if (!['http:', 'https:'].includes(url.protocol)) {
-      throw new Error('Webhook URL must start with http:// or https://');
-    }
-  }
-  if (notificationEmail && !notificationEmail.includes('@')) {
-    throw new Error('Notification email must look like an email address');
-  }
-
+function buildGetRoutes(context) {
   return {
-    rachioApiKey: body.get('rachio_api_key') || '',
-    ambientApiKey: body.get('ambient_api_key') || '',
-    ambientAppKey: body.get('ambient_app_key') || '',
-    ambientMacAddress: body.get('ambient_mac_address') || '',
-    notificationEmail,
-    webhookUrl,
-    mqttBrokerUrl: body.get('mqtt_broker_url') || '',
-    mqttTopicPrefix: body.get('mqtt_topic_prefix') || '',
-    debugLevel,
-    shadowMode,
-    lat: String(latNumber),
-    lon: String(lonNumber),
-    locationTimezone: timezone,
-    webHost,
-    webPort,
-    webUiPassword: body.get('web_ui_password') || '',
-    disableWebUiPassword: body.get('disable_web_ui_password') === 'on',
+    '/login': (ctx) => serve(ctx.res, loginPage(ctx.url.searchParams)),
+    '/': (ctx) => serve(ctx.res, dashboardPage(ctx.url.searchParams, context.zonesPath, ctx.csrf)),
+    '/dashboard': (ctx) => serve(ctx.res, dashboardPage(ctx.url.searchParams, context.zonesPath, ctx.csrf)),
+    '/logs': (ctx) => serve(ctx.res, logsPage(ctx.url.searchParams, ctx.csrf)),
+    '/zones': (ctx) => serve(ctx.res, zonesPage(ctx.url.searchParams, context.zonesPath, ctx.csrf)),
+    '/settings': (ctx) => serve(ctx.res, settingsPage(ctx.url.searchParams, ctx.csrf)),
+    '/setup': (ctx) => redirect(ctx.res, '/settings'),
+    '/charts': (ctx) => serve(ctx.res, chartsPage(ctx.csrf)),
+    '/briefing': (ctx) => serve(ctx.res, briefingPage(ctx.csrf)),
+    '/satellite': (ctx) => serve(ctx.res, satellitePage(ctx.csrf)),
+
+    // API - status and charts
+    '/api/status': (ctx) => handleStatus(ctx.req, ctx.res),
+    '/api/charts': (ctx) => handleCharts(ctx.req, ctx.res),
+    '/api/ai/status': (ctx) => handleAIStatus(ctx.req, ctx.res),
+
+    // API - history
+    '/api/history/reference-et': (ctx) => handleReferenceETHistory(ctx.req, ctx.res, ctx.url),
+    '/api/history/ndvi': (ctx) => handleNDVIHistory(ctx.req, ctx.res, ctx.url),
+    '/api/history/et-validation': (ctx) => handleETValidationHistory(ctx.req, ctx.res, ctx.url),
+    '/api/history/weather': (ctx) => handleWeatherHistory(ctx.req, ctx.res, ctx.url),
+
+    // API - data sources
+    '/api/soil': (ctx) => handleSoil(ctx.req, ctx.res, ctx.url),
+    '/api/reference-et': (ctx) => handleReferenceET(ctx.req, ctx.res),
+    '/api/ndvi': (ctx) => handleNDVI(ctx.req, ctx.res, ctx.url),
+    '/api/satellite/analysis': (ctx) => handleSatelliteAnalysis(ctx.req, ctx.res, ctx.url),
+    '/api/ndvi/image': (ctx) => handleNDVIImage(ctx.req, ctx.res, ctx.url),
   };
 }
 
-function readZonesFromBody(body) {
-  const soilProfiles = normalizeSoilProfiles(body.getAll('soil_name').map((name, index) => ({
-    name,
-    organicMatterPct: body.getAll('organic_matter_pct')[index],
-    soilPh: body.getAll('soil_ph')[index],
-  })));
-
-  const zones = normalizeZones(body.getAll('zone_number').map((zoneNumber, index) => ({
-    zoneNumber,
-    type: body.getAll('type')[index],
-    sunExposure: body.getAll('sun_exposure')[index],
-    areaSqFt: body.getAll('area_sqft')[index],
-    priority: body.getAll('priority')[index],
-    soil: body.getAll('soil')[index],
-  })), soilProfiles.map(soil => soil.name));
-
-  return { soilProfiles, zones };
-}
-
-// -- CLI runner --------------------------------------------------------------
-
-function runCliInBackground(args, logLabel, appRoot) {
-  execFile(process.execPath, ['src/cli.js', ...args], { cwd: appRoot }, (err, stdout, stderr) => {
-    if (err) {
-      log(0, `${logLabel} failed: ${err.message}`);
-      if (stderr) log(0, stderr);
-      return;
-    }
-    if (stdout?.trim()) log(1, `${logLabel}: ${stdout.trim()}`);
-    if (stderr?.trim()) log(1, `${logLabel}: ${stderr.trim()}`);
-  });
+function buildPostRoutes(context) {
+  const ctx = { ...context, syncWebUiAuth };
+  return {
+    '/login': (rctx) => handleLogin(rctx.req, rctx.res, rctx.body),
+    '/api/ai/chat': (rctx) => handleAIChat(rctx.req, rctx.res, rctx.body),
+    '/api/ai/narrative': (rctx) => handleAINarrative(rctx.req, rctx.res, rctx.body),
+    '/api/ai/briefing': (rctx) => handleAIBriefing(rctx.req, rctx.res),
+    '/api/backfill/reference-et': (rctx) => handleBackfillReferenceET(rctx.req, rctx.res, rctx.body),
+    '/api/backfill/weather': (rctx) => handleBackfillWeather(rctx.req, rctx.res, rctx.body),
+    '/logout': (rctx) => handleLogout(rctx.req, rctx.res),
+    '/action/water': (rctx) => handleWater(rctx.req, rctx.res, rctx.body, ctx),
+    '/action/shadow-toggle': (rctx) => handleShadowToggle(rctx.req, rctx.res),
+    '/action/smoke-test': (rctx) => handleSmokeTest(rctx.req, rctx.res, rctx.body, ctx),
+    '/setup/save': (rctx) => handleSettingsGuidedSave(rctx.req, rctx.res, rctx.body, ctx),
+    '/settings/guided-save': (rctx) => handleSettingsGuidedSave(rctx.req, rctx.res, rctx.body, ctx),
+    '/settings/save': (rctx) => handleSettingsRawSave(rctx.req, rctx.res, rctx.body, ctx),
+    '/zones/guided-save': (rctx) => handleZonesGuidedSave(rctx.req, rctx.res, rctx.body, ctx),
+    '/zones/save': (rctx) => handleZonesRawSave(rctx.req, rctx.res, rctx.body, ctx),
+  };
 }
 
 // -- Main request handler ----------------------------------------------------
 
 export function createRequestHandler({ host, port, appRoot, envPath, zonesPath, publicDir }) {
+  // Resolve the public directory once at startup instead of per-request
+  const resolvedPublic = realpathSync(publicDir);
+
+  const context = { appRoot, envPath, zonesPath, publicDir };
+  const GET_ROUTES = buildGetRoutes(context);
+  const POST_ROUTES = buildPostRoutes(context);
+
   return async (req, res) => {
     const url = new URL(req.url, `http://${host}:${port}`);
     const path = url.pathname;
@@ -318,134 +212,14 @@ export function createRequestHandler({ host, port, appRoot, envPath, zonesPath, 
 
       if (method === 'GET') {
         const csrf = getCsrfToken(req);
-        if (path === '/login') return serve(res, loginPage(url.searchParams));
-        if (path === '/' || path === '/dashboard') return serve(res, dashboardPage(url.searchParams, zonesPath, csrf));
-        if (path === '/logs') return serve(res, logsPage(url.searchParams, csrf));
-        if (path === '/zones') return serve(res, zonesPage(url.searchParams, zonesPath, csrf));
-        if (path === '/settings') return serve(res, settingsPage(url.searchParams, csrf));
-        if (path === '/setup') return redirect(res, '/settings');
-        if (path === '/charts') return serve(res, chartsPage(csrf));
-        if (path === '/briefing') return serve(res, briefingPage(csrf));
-        if (path === '/satellite') return serve(res, satellitePage(csrf));
-        if (path === '/api/status') return serveJSON(res, getStatusJSON(localDateStr()));
-        if (path === '/api/charts') return serveJSON(res, getMoistureHistory(14));
-        if (path === '/api/ai/status') return serveJSON(res, { enabled: aiNarrationEnabled() });
-        if (path === '/api/history/reference-et') {
-          const days = parseInt(url.searchParams.get('days') || '30', 10);
-          return serveJSON(res, { data: getRecentReferenceET(Math.min(days, 730)) });
-        }
-        if (path === '/api/history/ndvi') {
-          const days = parseInt(url.searchParams.get('days') || '180', 10);
-          const lat = parseFloat(url.searchParams.get('lat') || CONFIG.location.lat);
-          const lon = parseFloat(url.searchParams.get('lon') || CONFIG.location.lon);
-          return serveJSON(res, { data: getNDVIHistory(Math.min(days, 730), lat, lon) });
-        }
-        if (path === '/api/history/et-validation') {
-          const days = parseInt(url.searchParams.get('days') || '30', 10);
-          return serveJSON(res, { data: getRecentETValidation(Math.min(days, 730)) });
-        }
-        if (path === '/api/history/weather') {
-          const days = parseInt(url.searchParams.get('days') || '365', 10);
-          const source = url.searchParams.get('source') || null;
-          return serveJSON(res, { data: getWeatherHistory(Math.min(days, 730), source) });
-        }
 
-        // Data source API endpoints
-        if (path === '/api/soil') {
-          const lat = parseFloat(url.searchParams.get('lat') || CONFIG.location.lat);
-          const lon = parseFloat(url.searchParams.get('lon') || CONFIG.location.lon);
-          try {
-            const profile = await getSoilProfile(lat, lon);
-            return serveJSON(res, { profile });
-          } catch (err) {
-            return serveJSON(res, { error: err.message }, 502);
-          }
-        }
-
-        if (path === '/api/reference-et') {
-          try {
-            const ref = await getYesterdayReferenceET();
-            return serveJSON(res, { referenceET: ref });
-          } catch (err) {
-            return serveJSON(res, { error: err.message }, 502);
-          }
-        }
-
-        if (path === '/api/ndvi') {
-          if (!ndviEnabled()) return serveJSON(res, { error: 'NDVI not configured' }, 503);
-          const lat = parseFloat(url.searchParams.get('lat') || CONFIG.location.lat);
-          const lon = parseFloat(url.searchParams.get('lon') || CONFIG.location.lon);
-          try {
-            const from = url.searchParams.get('from') || undefined;
-            const to = url.searchParams.get('to') || undefined;
-            const interval = url.searchParams.get('interval') || undefined;
-            const maxCloudPct = parsePositiveNumber(url.searchParams.get('max_cloud_pct'), 20, { min: 0, max: 100 });
-            const lastIntervalBehavior = parseLastIntervalBehavior(url.searchParams.get('last_interval_behavior'));
-            const stats = await getNDVIStats(lat, lon, {
-              from,
-              to,
-              interval,
-              maxCloudPct,
-              lastIntervalBehavior,
-              persist: false,
-            });
-            return serveJSON(res, { stats });
-          } catch (err) {
-            return serveJSON(res, { error: err.message }, 502);
-          }
-        }
-
-        if (path === '/api/satellite/analysis') {
-          if (!ndviEnabled()) return serveJSON(res, { error: 'NDVI not configured' }, 503);
-          const lat = parseFloat(url.searchParams.get('lat') || CONFIG.location.lat);
-          const lon = parseFloat(url.searchParams.get('lon') || CONFIG.location.lon);
-          try {
-            const from = url.searchParams.get('from') || undefined;
-            const to = url.searchParams.get('to') || undefined;
-            const interval = url.searchParams.get('interval') || undefined;
-            const maxCloudPct = parsePositiveNumber(url.searchParams.get('max_cloud_pct'), 20, { min: 0, max: 100 });
-            const lastIntervalBehavior = parseLastIntervalBehavior(url.searchParams.get('last_interval_behavior'))
-              || (interval === 'P1M' ? 'SHORTEN' : undefined);
-            const stats = await getNDVIStats(lat, lon, {
-              from,
-              to,
-              interval,
-              maxCloudPct,
-              lastIntervalBehavior,
-              persist: false,
-            });
-            const analysis = buildSatelliteAnalysis(stats);
-            return serveJSON(res, { stats, analysis });
-          } catch (err) {
-            return serveJSON(res, { error: err.message }, 502);
-          }
-        }
-
-        if (path === '/api/ndvi/image') {
-          const lat = parseFloat(url.searchParams.get('lat') || CONFIG.location.lat);
-          const lon = parseFloat(url.searchParams.get('lon') || CONFIG.location.lon);
-          const date = url.searchParams.get('date') || '';
-          const mode = url.searchParams.get('mode') || 'ndvi';
-          if (mode !== 'truecolor' && !ndviEnabled()) { res.writeHead(503); res.end('NDVI not configured'); return; }
-          const sizeMeters = parsePositiveNumber(url.searchParams.get('size_meters'), undefined, { min: 40, max: 2000 });
-          try {
-            const imageOpts = { mode };
-            if (date) imageOpts.date = date;
-            if (sizeMeters != null) imageOpts.sizeMeters = sizeMeters;
-            const image = await getNDVIImage(lat, lon, imageOpts);
-            res.writeHead(200, { 'Content-Type': image.contentType, 'Cache-Control': 'public, max-age=86400' });
-            res.end(image.buffer);
-            return;
-          } catch (err) {
-            res.writeHead(502);
-            res.end(err.message);
-            return;
-          }
-        }
+        // Check route table
+        const handler = GET_ROUTES[path];
+        if (handler) return await handler({ req, res, url, csrf });
 
         // Static assets (PWA, CSS, theme toggle)
-        if (path === '/manifest.json' || path === '/sw.js' || path === '/icon-192.svg' || path === '/icon-512.svg' || path === '/styles.css' || path === '/theme.js' || path === '/ai.js' || path === '/satellite.js') {
-          return serveStatic(res, path, publicDir);
+        if (PUBLIC_PATHS.has(path) && path !== '/login') {
+          return serveStatic(res, path, publicDir, resolvedPublic);
         }
       }
 
@@ -459,29 +233,13 @@ export function createRequestHandler({ host, port, appRoot, envPath, zonesPath, 
           return;
         }
 
+        // Login does not require CSRF (no prior session to attach token to)
         if (path === '/login') {
-          if (!authEnabled()) return redirect(res, '/');
-          const ip = getClientIP(req);
-          if (!checkLoginRate(ip)) {
-            log(0, `Login rate limit exceeded for ${ip}`);
-            return redirect(res, '/login?msg=bad-auth');
-          }
-          const password = String(body.get('password') || '');
-          const next = safeNextPath(body.get('next'));
-          if (!verifyPassword(password)) {
-            recordLoginFailure(ip);
-            return redirect(res, `/login?msg=bad-auth&next=${encodeURIComponent(next)}`);
-          }
-          // Clear any prior session before issuing a new one (prevent session fixation)
-          clearSession(req);
-          clearLoginFailures(ip);
-          const { token } = createSession();
-          return redirect(res, next, {
-            'Set-Cookie': `${AUTH_COOKIE_NAME}=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${Math.floor(SESSION_TTL_MS / 1000)}`,
-          });
+          const handler = POST_ROUTES['/login'];
+          return await handler({ req, res, body });
         }
 
-        // All POST routes below /login require CSRF validation
+        // All other POST routes require CSRF validation
         if (!verifyCsrf(req, body)) {
           log(0, `CSRF validation failed for ${path}`);
           res.writeHead(403, SECURITY_HEADERS);
@@ -489,172 +247,8 @@ export function createRequestHandler({ host, port, appRoot, envPath, zonesPath, 
           return;
         }
 
-        // AI API endpoints (JSON request/response, CSRF-protected)
-        if (path === '/api/ai/chat') {
-          if (!aiNarrationEnabled()) {
-            return serveJSON(res, { error: 'AI not configured' }, 503);
-          }
-          const question = body.get('question') || '';
-          if (!question.trim() || question.length > 500) {
-            return serveJSON(res, { error: 'Question required (max 500 chars)' }, 400);
-          }
-          try {
-            const result = await askYard(question.trim());
-            return serveJSON(res, { answer: result?.content || 'No response', reasoning: result?.reasoning || null });
-          } catch (err) {
-            log(0, `AI chat error: ${err.message}`);
-            return serveJSON(res, { error: 'AI request failed' }, 502);
-          }
-        }
-
-        if (path === '/api/ai/narrative') {
-          if (!aiNarrationEnabled()) {
-            return serveJSON(res, { error: 'AI not configured' }, 503);
-          }
-          const runId = parseInt(body.get('run_id') || '', 10);
-          if (!Number.isFinite(runId) || runId <= 0) {
-            return serveJSON(res, { error: 'Valid run_id required' }, 400);
-          }
-          try {
-            const weekAgo = new Date(Date.now() - 30 * 86400000).toISOString();
-            const runs = getRunsSince(weekAgo);
-            const run = runs.find(r => r.id === runId);
-            if (!run) {
-              return serveJSON(res, { error: 'Run not found' }, 404);
-            }
-            const result = await generateNarrative(run);
-            return serveJSON(res, { narrative: result?.narrative || null, reasoning: result?.reasoning || null });
-          } catch (err) {
-            log(0, `AI narrative error: ${err.message}`);
-            return serveJSON(res, { error: 'AI request failed' }, 502);
-          }
-        }
-
-        if (path === '/api/ai/briefing') {
-          if (!aiNarrationEnabled()) {
-            return serveJSON(res, { error: 'AI not configured' }, 503);
-          }
-          try {
-            const context = buildBriefingContext();
-            const narrative = await generateBriefingNarrative(context);
-            return serveJSON(res, {
-              narrative: narrative?.content || null,
-              reasoning: narrative?.reasoning || null,
-              context,
-            });
-          } catch (err) {
-            log(0, `AI briefing error: ${err.message}`);
-            return serveJSON(res, { error: 'AI request failed' }, 502);
-          }
-        }
-
-        // Data source backfill endpoint (long-running, returns when done)
-        if (path === '/api/backfill/reference-et') {
-          try {
-            const years = parseInt(body.get('years') || '2', 10);
-            const clampedYears = Math.min(Math.max(years, 1), 5);
-            const total = await backfillReferenceET({ years: clampedYears });
-            return serveJSON(res, { saved: total, years: clampedYears });
-          } catch (err) {
-            log(0, `Reference ET backfill error: ${err.message}`);
-            return serveJSON(res, { error: err.message }, 502);
-          }
-        }
-
-        if (path === '/api/backfill/weather') {
-          try {
-            const years = parseInt(body.get('years') || '2', 10);
-            const clampedYears = Math.min(Math.max(years, 1), 5);
-            const total = await backfillWeatherHistory({ years: clampedYears });
-            return serveJSON(res, { saved: total, years: clampedYears });
-          } catch (err) {
-            log(0, `Weather backfill error: ${err.message}`);
-            return serveJSON(res, { error: err.message }, 502);
-          }
-        }
-
-        if (path === '/logout') {
-          clearSession(req);
-          return redirect(res, authEnabled() ? '/login?msg=logged-out' : '/', {
-            'Set-Cookie': `${AUTH_COOKIE_NAME}=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0`,
-          });
-        }
-
-        if (path === '/action/water') {
-          runCliInBackground(['water'], 'Manual watering via web UI', appRoot);
-          return redirect(res, '/?msg=manual-started');
-        }
-
-        if (path === '/action/shadow-toggle') {
-          const nextMode = readShadowMode() ? 'false' : 'true';
-          writeEnvValue('SHADOW_MODE', nextMode);
-          log(1, `Shadow mode toggled via web UI: now ${nextMode === 'true' ? 'SHADOW' : 'LIVE'}`);
-          return redirect(res, `/?msg=${readShadowMode() ? 'shadow-on' : 'live-on'}`);
-        }
-
-        if (path === '/action/smoke-test') {
-          const zone = parseInt(String(body.get('zone') || ''), 10);
-          const minutes = parseInt(String(body.get('minutes') || ''), 10);
-          if (!Number.isFinite(zone) || zone < 1 || zone > 16) {
-            return redirect(res, '/?msg=settings-error');
-          }
-          if (!Number.isFinite(minutes) || minutes < 1 || minutes > 10) {
-            return redirect(res, '/?msg=settings-error');
-          }
-          runCliInBackground(['smoke-test', '--zone', String(zone), '--minutes', String(minutes), '--yes'], 'Smoke test via web UI', appRoot);
-          return redirect(res, '/?msg=smoke-started');
-        }
-
-        if (path === '/setup/save' || path === '/settings/guided-save') {
-          try {
-            const values = readGuidedSettingsFromBody(body);
-            const nextContent = applyGuidedSettings(readEnvFile(), values);
-            mkdirSync(dirname(envPath), { recursive: true });
-            writeFileSync(envPath, nextContent, { mode: 0o600 });
-            syncWebUiAuth(nextContent);
-            log(1, `Guided settings updated via web UI: ${path}`);
-            return redirect(res, '/settings?msg=settings-saved');
-          } catch (err) {
-            log(0, `Guided settings save failed: ${err.message}`);
-            return redirect(res, '/settings?msg=settings-error');
-          }
-        }
-
-        if (path === '/zones/guided-save') {
-          try {
-            const yamlContent = buildZoneConfigYaml(readZonesFromBody(body));
-            mkdirSync(dirname(zonesPath), { recursive: true });
-            writeFileSync(zonesPath, yamlContent);
-            log(1, 'Zones config updated via guided web UI');
-            return redirect(res, '/zones?msg=zones-saved');
-          } catch (err) {
-            log(0, `Guided zones save failed: ${err.message}`);
-            return redirect(res, '/zones?msg=zones-error');
-          }
-        }
-
-        if (path === '/zones/save') {
-          const zonesContent = body.get('zones') || '';
-          try {
-            yaml.load(zonesContent, { schema: yaml.JSON_SCHEMA });
-            mkdirSync(dirname(zonesPath), { recursive: true });
-            writeFileSync(zonesPath, zonesContent);
-            log(1, 'Zones config updated via raw web UI');
-            return redirect(res, '/zones?msg=zones-saved&advanced=1');
-          } catch (err) {
-            log(0, `Invalid YAML in zones save: ${err.message}`);
-            return redirect(res, '/zones?msg=zones-error&advanced=1');
-          }
-        }
-
-        if (path === '/settings/save') {
-          const envContent = body.get('env') || '';
-          mkdirSync(dirname(envPath), { recursive: true });
-          writeFileSync(envPath, envContent, { mode: 0o600 });
-          syncWebUiAuth(envContent);
-          log(1, 'Environment config updated via raw web UI');
-          return redirect(res, '/settings?msg=settings-saved&advanced=1');
-        }
+        const handler = POST_ROUTES[path];
+        if (handler) return await handler({ req, res, body });
       }
 
       res.writeHead(404, { 'Cache-Control': 'no-store', ...SECURITY_HEADERS });
