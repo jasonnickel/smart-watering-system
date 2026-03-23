@@ -584,8 +584,8 @@ summary {
 }
 .sat-gallery {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 10px;
   margin-top: 16px;
 }
 .sat-card {
@@ -687,5 +687,12 @@ summary {
   }
   fieldset {
     padding: 12px;
+  }
+  .sat-gallery {
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 8px;
+  }
+  .sat-controls {
+    flex-direction: column;
   }
 }

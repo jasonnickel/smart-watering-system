@@ -737,6 +737,13 @@ export function satellitePage(csrf) {
             <option value="year">Year to Year (2 years quarterly)</option>
           </select>
         </div>
+        <div class="form-row">
+          <label for="sat-mode">Image Type</label>
+          <select id="sat-mode">
+            <option value="ndvi" selected>Vegetation Health (NDVI enhanced)</option>
+            <option value="truecolor">True Color Satellite</option>
+          </select>
+        </div>
         <button id="sat-load" class="btn btn-primary" type="button">Load Satellite Images</button>
       </div>
       <p id="sat-status" class="small"></p>

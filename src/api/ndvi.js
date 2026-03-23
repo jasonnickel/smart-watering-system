@@ -27,19 +27,42 @@ function evaluatePixel(s) {
   return [ndvi];
 }`;
 
-// NDVI evalscript for visual image (green = healthy, red/brown = stressed)
+// NDVI evalscript for visual image - blends true color with NDVI color overlay
+// Vegetation pops green, bare soil/pavement shows naturally, clouds are white
 const NDVI_IMAGE_SCRIPT = `//VERSION=3
 function setup() {
-  return { input: ["B04", "B08", "SCL"], output: { bands: 3, sampleType: "AUTO" } };
+  return { input: ["B02", "B03", "B04", "B08", "SCL"], output: { bands: 3, sampleType: "AUTO" } };
 }
 function evaluatePixel(s) {
-  if (s.SCL === 3 || s.SCL === 8 || s.SCL === 9 || s.SCL === 10) return [0.8, 0.8, 0.8];
+  if (s.SCL === 3 || s.SCL === 8 || s.SCL === 9 || s.SCL === 10) return [0.9, 0.9, 0.9];
   var ndvi = (s.B08 - s.B04) / (s.B08 + s.B04);
-  if (ndvi < 0.1) return [0.6, 0.4, 0.2];
-  if (ndvi < 0.3) return [0.8, 0.7, 0.2];
-  if (ndvi < 0.5) return [0.5, 0.8, 0.2];
-  return [0.1, 0.6, 0.1];
+  var r = s.B04 * 3.0;
+  var g = s.B03 * 3.0;
+  var b = s.B02 * 3.0;
+  if (ndvi > 0.3) {
+    var boost = Math.min(1.0, (ndvi - 0.3) * 2.0);
+    g = g + boost * 0.4;
+    r = r * (1.0 - boost * 0.3);
+  } else if (ndvi < 0.1) {
+    r = r + 0.1;
+  }
+  return [Math.min(1, r), Math.min(1, g), Math.min(1, b)];
 }`;
+
+// True color satellite image (natural appearance)
+const TRUE_COLOR_SCRIPT = `//VERSION=3
+function setup() {
+  return { input: ["B02", "B03", "B04", "SCL"], output: { bands: 3, sampleType: "AUTO" } };
+}
+function evaluatePixel(s) {
+  if (s.SCL === 3 || s.SCL === 8 || s.SCL === 9 || s.SCL === 10) return [0.9, 0.9, 0.9];
+  return [Math.min(1, s.B04 * 3.5), Math.min(1, s.B03 * 3.5), Math.min(1, s.B02 * 3.5)];
+}`;
+
+const SCRIPTS = {
+  ndvi: NDVI_IMAGE_SCRIPT,
+  truecolor: TRUE_COLOR_SCRIPT,
+};
 
 let cachedToken = null;
 let tokenExpiresAt = 0;
@@ -183,7 +206,7 @@ export async function getNDVIImage(lat, lon, options = {}) {
   }
 
   const token = await getToken();
-  const sizeMeters = options.sizeMeters || 200;
+  const sizeMeters = options.sizeMeters || 500;
   const bbox = boundingBox(lat, lon, sizeMeters);
   const widthPx = options.widthPx || 512;
   const heightPx = widthPx;
@@ -216,7 +239,7 @@ export async function getNDVIImage(lat, lon, options = {}) {
         height: heightPx,
         responses: [{ identifier: 'default', format: { type: 'image/png' } }],
       },
-      evalscript: NDVI_IMAGE_SCRIPT,
+      evalscript: SCRIPTS[options.mode] || NDVI_IMAGE_SCRIPT,
     }),
     signal: timeoutSignal,
   });
