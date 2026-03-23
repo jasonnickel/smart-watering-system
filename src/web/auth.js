@@ -9,7 +9,11 @@ const sessions = new Map();
 let _password = '';
 
 export function initAuth(password) {
-  _password = password || '';
+  const nextPassword = password || '';
+  if (nextPassword !== _password) {
+    sessions.clear();
+  }
+  _password = nextPassword;
 }
 
 export function authEnabled() {

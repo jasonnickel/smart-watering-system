@@ -73,6 +73,16 @@ describe('Web auth module', () => {
       assert.equal(hasValidSession(req), false);
     });
 
+    it('invalidates existing sessions when the password changes', () => {
+      initAuth('pass');
+      const token = createSession();
+      const req = fakeReq(`${AUTH_COOKIE_NAME}=${token}`);
+      assert.equal(hasValidSession(req), true);
+
+      initAuth('new-pass');
+      assert.equal(hasValidSession(req), false);
+    });
+
     it('allows all requests when auth is disabled', () => {
       initAuth('');
       assert.equal(hasValidSession(fakeReq()), true);

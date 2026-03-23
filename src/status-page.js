@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { log } from './log.js';
 import { formatTimestamp, localDateStr, minutesSinceTimestamp } from './time.js';
+import { collectAdvisorInsights, formatAdvisorInsight } from './ai/advisor.js';
 import {
   getStatus, getRunsSince, getCachedWeather,
   getRecentDiscrepancies, getFinanceData,
@@ -27,6 +28,7 @@ export function generateStatusPage() {
     const recentRuns = getRunsSince(since).filter(r => r.phase === 'DECIDE').slice(0, 5);
     const discrepancies = getRecentDiscrepancies(24);
     const finance = getFinanceData();
+    const advisorInsights = collectAdvisorInsights({ maxInsights: 3 });
 
     // Weather source
     const ambientCache = getCachedWeather('ambient');
@@ -91,6 +93,15 @@ export function generateStatusPage() {
         }).join('')
       : '<p style="color:#999;">No recent activity</p>';
 
+    const advisorHtml = advisorInsights.length > 0
+      ? `<div class="card">
+        <h2>Advisor Insights</h2>
+        ${advisorInsights.map(insight => `<div style="padding:6px 0;border-bottom:1px solid #eee;font-size:13px;">
+          ${formatAdvisorInsight(insight)}
+        </div>`).join('')}
+      </div>`
+      : '';
+
     const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -118,6 +129,8 @@ export function generateStatusPage() {
       <div style="color:${weatherColor};font-weight:bold;">${weatherSource}</div>
       ${discrepancies.length > 0 ? `<div style="color:#e65100;font-size:12px;margin-top:4px;">&#9888; ${discrepancies.length} discrepancy warning(s) in last 24h</div>` : ''}
     </div>
+
+    ${advisorHtml}
 
     <div class="card">
       <h2>Soil Moisture</h2>
