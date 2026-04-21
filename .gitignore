@@ -7,3 +7,9 @@ logs/
 
 # Local historical artifacts (not committed - public repo)
 .private/
+
+# Playwright MCP artifacts + ad-hoc screenshots
+.playwright-mcp/
+charts-*.png
+page-*.png
+page-*.yml

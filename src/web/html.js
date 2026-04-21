@@ -104,8 +104,8 @@ export function layout(title, content, activeTab, options = {}) {
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>${escapeHtml(title)} - Taproot</title>
   <link rel="stylesheet" href="/styles.css?v=20260422">
-  <script src="/theme.js?v=20260422"></script>
-  <script src="/ai.js?v=20260422" defer></script>
+  <script src="/theme.js"></script>
+  <script src="/ai.js" defer></script>
   <script src="/satellite.js?v=20260422" defer></script>
   <link rel="manifest" href="/manifest.json">
   <link rel="icon" href="/icon-192.svg" type="image/svg+xml">
