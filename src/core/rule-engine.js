@@ -71,17 +71,42 @@ export function getWateringDecision(ctx) {
 
   // Sort by urgency score (lower = more urgent)
   filtered.allowedZones.sort((a, b) => a.score - b.score);
-  const activeZones = filtered.allowedZones;
 
-  // Stage 4: Budget check
+  // Stage 4: Budget check with partial-watering fallback. If total demand
+  // exceeds the daily gallon or cost cap, water the most-urgent zones that
+  // fit within budget instead of skipping the entire run. A zone either fits
+  // in full or is deferred - we never truncate a zone's duration.
+  const gallonBudget = Math.max(0, CONFIG.schedule.maxDailyGallons - ctx.dailyUsage.gallons);
+  const costBudget = Math.max(0, CONFIG.schedule.maxDailyCost - ctx.dailyUsage.cost);
+
+  const activeZones = [];
+  const deferredZones = [];
+  let runningGallons = 0;
+  for (const zone of filtered.allowedZones) {
+    const projectedGallons = runningGallons + zone.gallons;
+    const projectedCost = calculateCost(projectedGallons, ctx.financeData.cumulativeGallons);
+    if (projectedGallons <= gallonBudget && projectedCost <= costBudget) {
+      activeZones.push(zone);
+      runningGallons = projectedGallons;
+    } else {
+      deferredZones.push(zone);
+    }
+  }
+
+  if (activeZones.length === 0) {
+    // Nothing fit - surface the exact constraint that bit.
+    const demandedGallons = filtered.allowedZones.reduce((s, z) => s + z.gallons, 0);
+    const reasonTxt = demandedGallons > gallonBudget
+      ? `Budget - Daily gallon limit exceeded (need ${Math.round(demandedGallons)} gal, ${Math.round(gallonBudget)} gal left today)`
+      : 'Budget - Daily cost limit exceeded';
+    return {
+      decision: 'SKIP',
+      reason: reasonTxt,
+      deferredZones,
+    };
+  }
+
   const totals = calculateRunTotals(activeZones, ctx.financeData.cumulativeGallons);
-
-  if (ctx.dailyUsage.gallons + totals.gallons > CONFIG.schedule.maxDailyGallons) {
-    return { decision: 'SKIP', reason: 'Budget - Daily gallon limit exceeded' };
-  }
-  if (ctx.dailyUsage.cost + totals.cost > CONFIG.schedule.maxDailyCost) {
-    return { decision: 'SKIP', reason: 'Budget - Daily cost limit exceeded' };
-  }
 
   // Stage 5: Build schedule with soak cycles
   const schedule = buildSoakSchedule(activeZones);
@@ -89,13 +114,17 @@ export function getWateringDecision(ctx) {
   const blockedNote = filtered.blockedZones.length > 0
     ? ` (restriction-blocked: ${filtered.blockedZones.map(z => z.name).join(', ')})`
     : '';
+  const deferredNote = deferredZones.length > 0
+    ? ` (deferred by budget: ${deferredZones.map(z => z.name).join(', ')})`
+    : '';
 
   return {
     decision: 'WATER',
-    reason: reason + blockedNote,
+    reason: reason + blockedNote + deferredNote,
     zones: schedule,
     originalZones: activeZones,
     blockedZones: filtered.blockedZones,
+    deferredZones,
     gallons: totals.gallons,
     cost: totals.cost,
   };

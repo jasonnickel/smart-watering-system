@@ -1,33 +1,85 @@
-// Historical chart data endpoints and page renderer
-// Uses Chart.js via CDN for client-side rendering
+// Historical chart data endpoints and page renderer.
+// Chart.js is bundled locally (src/public/chart.umd.min.js) to satisfy the
+// app's CSP (script-src 'self').
 
 import {
   getDB, getRunsSince,
   getRecentPrecipitationAudits,
+  getUtilityUsageDaily,
+  getUtilityBillsHistory,
+  getWeatherHistoryForCharts,
+  getReferenceETForCharts,
 } from './db/state.js';
+import CONFIG from './config.js';
 
 /**
- * Get moisture history from soil_moisture table updates.
- * Reconstructs daily snapshots from runs log.
+ * Compute a single-day water cost from gallons using the configured tiered
+ * rate schedule. Does not model cumulative billing-cycle position - treats
+ * each day as billed from the start of tiers. Good enough for a "daily
+ * cost" view.
+ */
+function estimateDailyCost(gallons) {
+  const rates = CONFIG.finance.waterRates || [];
+  if (gallons <= 0 || rates.length === 0) return 0;
+
+  let remaining = gallons;
+  let cost = 0;
+  let lowerBound = 0;
+  for (const tier of rates) {
+    const upperBound = tier.thresholdGallons;
+    const tierCapacity = Math.max(0, upperBound - lowerBound);
+    const billable = Math.min(remaining, tierCapacity);
+    cost += (billable / 1000) * tier.ratePer1000Gal;
+    remaining -= billable;
+    lowerBound = upperBound;
+    if (remaining <= 0) break;
+  }
+  return cost;
+}
+
+/**
+ * Get moisture, decisions, and historical usage/cost/weather data for the
+ * /charts page. Backed by AquaHawk ground truth when available, with fallback
+ * to Taproot's own daily_usage modeling.
  *
- * @param {number} days - Number of days to look back
- * @returns {object} { labels: string[], datasets: {zoneNumber, zoneName, data}[] }
+ * @param {number} days
  */
 export function getMoistureHistory(days = 14) {
-  const since = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
+  const since = new Date(Date.now() - days * 86400000).toISOString();
 
-  // Get daily usage records which track zone activity
-  const usageRows = getDB().prepare(
-    'SELECT * FROM daily_usage WHERE date >= ? ORDER BY date ASC'
-  ).all(since);
-
-  // Get current moisture for latest snapshot
   const currentMoisture = getDB().prepare(
     'SELECT * FROM soil_moisture ORDER BY zone_number'
   ).all();
 
-  // Get all DECIDE runs for decision frequency
-  const runs = getRunsSince(new Date(Date.now() - days * 86400000).toISOString());
+  // AquaHawk ground truth (actual meter readings) is canonical for usage.
+  const utilityDaily = getUtilityUsageDaily(days);
+  const modelDailyUsage = getDB().prepare(
+    'SELECT * FROM daily_usage WHERE date >= ? ORDER BY date ASC'
+  ).all(since.slice(0, 10));
+  const modelByDate = new Map(modelDailyUsage.map(r => [r.date, r]));
+
+  // Merge: one row per date, with actual (AquaHawk) and predicted (model) side-by-side
+  const allDates = new Set([
+    ...utilityDaily.map(r => r.date),
+    ...modelDailyUsage.map(r => r.date),
+  ]);
+  const dailyUsage = [...allDates].sort().map(date => {
+    const actual = utilityDaily.find(u => u.date === date);
+    const predicted = modelByDate.get(date);
+    const actualGal = actual?.gallons ?? null;
+    return {
+      date,
+      gallons: actualGal ?? predicted?.gallons ?? 0,
+      predicted_gallons: predicted?.gallons ?? null,
+      actual_gallons: actualGal,
+      cost: actualGal != null
+        ? estimateDailyCost(actualGal)
+        : (predicted?.cost ?? 0),
+      rainfall_in: actual?.rainfall_in ?? null,
+    };
+  });
+
+  const runs = getRunsSince(since);
   const decisions = runs.filter(r => r.phase === 'DECIDE');
 
   return {
@@ -38,11 +90,7 @@ export function getMoistureHistory(days = 14) {
       inches: z.balance_inches,
       capacity: z.total_capacity,
     })),
-    dailyUsage: usageRows.map(r => ({
-      date: r.date,
-      gallons: r.gallons,
-      cost: r.cost,
-    })),
+    dailyUsage,
     decisions: decisions.map(r => ({
       date: r.timestamp?.slice(0, 10),
       decision: r.decision,
@@ -50,6 +98,9 @@ export function getMoistureHistory(days = 14) {
       gallons: r.total_gallons,
     })),
     precipAudits: getRecentPrecipitationAudits(days),
+    weatherHistory: getWeatherHistoryForCharts(days),
+    referenceET: getReferenceETForCharts(days),
+    bills: getUtilityBillsHistory(Math.max(days, 60)),
   };
 }
 
@@ -77,13 +128,23 @@ function renderChartHeader(title, selectId, selectedDays) {
 export function chartsPageContent() {
   return `
     <div class="card">
-      ${renderChartHeader('Water Usage', 'usage-days', 14)}
+      ${renderChartHeader('Water Usage (actual from meter)', 'usage-days', 14)}
       <canvas id="usageChart" height="200"></canvas>
     </div>
 
     <div class="card">
-      ${renderChartHeader('Daily Cost', 'cost-days', 14)}
+      ${renderChartHeader('Daily Cost (computed from meter + current rates)', 'cost-days', 14)}
       <canvas id="costChart" height="200"></canvas>
+    </div>
+
+    <div class="card">
+      <h2>Monthly Bills (as billed)</h2>
+      <canvas id="billsChart" height="200"></canvas>
+    </div>
+
+    <div class="card">
+      ${renderChartHeader('Predicted vs Actual Usage', 'predvsactual-days', 14)}
+      <canvas id="predVsActualChart" height="200"></canvas>
     </div>
 
     <div class="card">
@@ -97,18 +158,30 @@ export function chartsPageContent() {
     </div>
 
     <div class="card">
+      ${renderChartHeader('Historical Weather (temp + rain)', 'weather-days', 30)}
+      <canvas id="weatherChart" height="200"></canvas>
+    </div>
+
+    <div class="card">
+      ${renderChartHeader('Reference ET (CoAgMet)', 'et-days', 30)}
+      <canvas id="etChart" height="200"></canvas>
+    </div>
+
+    <div class="card">
       <h2>Current Soil Moisture</h2>
       <canvas id="moistureChart" height="250"></canvas>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+    <script src="/chart.umd.min.js"></script>
     <script>
       const colors = {
         blue: 'rgba(11, 95, 255, 0.7)',
         green: 'rgba(15, 123, 62, 0.7)',
         orange: 'rgba(161, 92, 0, 0.7)',
         red: 'rgba(180, 35, 24, 0.7)',
+        purple: 'rgba(120, 60, 200, 0.7)',
         lightGreen: 'rgba(15, 123, 62, 0.15)',
+        lightBlue: 'rgba(11, 95, 255, 0.15)',
       };
       const chartCache = new Map();
       const chartInstances = {};
@@ -136,38 +209,39 @@ export function chartsPageContent() {
 
       function renderUsageChart(data) {
         destroyChart('usage');
-        if (data.dailyUsage.length === 0) return;
+        const rows = data.dailyUsage || [];
+        if (rows.length === 0) return;
 
         chartInstances.usage = new Chart(document.getElementById('usageChart'), {
           type: 'bar',
           data: {
-            labels: data.dailyUsage.map(day => day.date.slice(5)),
+            labels: rows.map(day => day.date.slice(5)),
             datasets: [{
-              label: 'Gallons',
-              data: data.dailyUsage.map(day => day.gallons),
+              label: 'Gallons (AquaHawk)',
+              data: rows.map(day => day.gallons),
               backgroundColor: colors.blue,
               borderRadius: 4,
             }],
           },
           options: {
             responsive: true,
-            plugins: { legend: { display: false } },
-            scales: { y: { beginAtZero: true } },
+            scales: { y: { beginAtZero: true, title: { display: true, text: 'Gallons' } } },
           },
         });
       }
 
       function renderCostChart(data) {
         destroyChart('cost');
-        if (data.dailyUsage.length === 0) return;
+        const rows = data.dailyUsage || [];
+        if (rows.length === 0) return;
 
         chartInstances.cost = new Chart(document.getElementById('costChart'), {
           type: 'line',
           data: {
-            labels: data.dailyUsage.map(day => day.date.slice(5)),
+            labels: rows.map(day => day.date.slice(5)),
             datasets: [{
               label: 'Cost ($)',
-              data: data.dailyUsage.map(day => day.cost),
+              data: rows.map(day => day.cost),
               borderColor: colors.green,
               backgroundColor: colors.lightGreen,
               fill: true,
@@ -178,6 +252,53 @@ export function chartsPageContent() {
             responsive: true,
             plugins: { legend: { display: false } },
             scales: { y: { beginAtZero: true } },
+          },
+        });
+      }
+
+      function renderBillsChart(data) {
+        destroyChart('bills');
+        const bills = data.bills || [];
+        if (bills.length === 0) return;
+
+        chartInstances.bills = new Chart(document.getElementById('billsChart'), {
+          type: 'bar',
+          data: {
+            labels: bills.map(b => b.period_end),
+            datasets: [
+              { label: 'Water Service', data: bills.map(b => b.water_service || 0), backgroundColor: colors.blue, stack: 'cost' },
+              { label: 'Base Fee',      data: bills.map(b => b.water_base_fee || 0), backgroundColor: colors.green, stack: 'cost' },
+              { label: 'Wastewater',    data: bills.map(b => b.wastewater || 0), backgroundColor: colors.orange, stack: 'cost' },
+              { label: 'Drainage',      data: bills.map(b => b.drainage || 0), backgroundColor: colors.purple, stack: 'cost' },
+            ],
+          },
+          options: {
+            responsive: true,
+            scales: {
+              x: { stacked: true, title: { display: true, text: 'Bill period end' } },
+              y: { stacked: true, beginAtZero: true, title: { display: true, text: '$' } },
+            },
+          },
+        });
+      }
+
+      function renderPredVsActualChart(data) {
+        destroyChart('predVsActual');
+        const rows = (data.dailyUsage || []).filter(r => r.actual_gallons != null || r.predicted_gallons != null);
+        if (rows.length === 0) return;
+
+        chartInstances.predVsActual = new Chart(document.getElementById('predVsActualChart'), {
+          type: 'line',
+          data: {
+            labels: rows.map(r => r.date.slice(5)),
+            datasets: [
+              { label: 'Actual (AquaHawk)', data: rows.map(r => r.actual_gallons), borderColor: colors.blue, backgroundColor: colors.lightBlue, fill: false, tension: 0.2 },
+              { label: 'Predicted (Taproot model)', data: rows.map(r => r.predicted_gallons), borderColor: colors.orange, backgroundColor: 'transparent', fill: false, borderDash: [5, 3], tension: 0.2 },
+            ],
+          },
+          options: {
+            responsive: true,
+            scales: { y: { beginAtZero: true, title: { display: true, text: 'Gallons' } } },
           },
         });
       }
@@ -229,12 +350,61 @@ export function chartsPageContent() {
           },
           options: {
             responsive: true,
+            scales: { y: { beginAtZero: true, title: { display: true, text: 'Inches' } } },
+          },
+        });
+      }
+
+      function renderWeatherChart(data) {
+        destroyChart('weather');
+        const rows = data.weatherHistory || [];
+        if (rows.length === 0) return;
+
+        // One row per date; de-dupe by date preferring ambient
+        const seen = new Set();
+        const unique = rows.filter(r => (seen.has(r.date) ? false : (seen.add(r.date), true)));
+
+        chartInstances.weather = new Chart(document.getElementById('weatherChart'), {
+          data: {
+            labels: unique.map(r => r.date.slice(5)),
+            datasets: [
+              { type: 'line', label: 'High (°F)', data: unique.map(r => r.temp_max), borderColor: colors.red, backgroundColor: 'transparent', yAxisID: 'y', tension: 0.3 },
+              { type: 'line', label: 'Low (°F)', data: unique.map(r => r.temp_min), borderColor: colors.blue, backgroundColor: 'transparent', yAxisID: 'y', tension: 0.3 },
+              { type: 'bar', label: 'Rain (in)', data: unique.map(r => r.precipitation || 0), backgroundColor: colors.lightBlue, yAxisID: 'y1' },
+            ],
+          },
+          options: {
+            responsive: true,
             scales: {
-              y: {
-                beginAtZero: true,
-                title: { display: true, text: 'Inches' },
-              },
+              y: { type: 'linear', position: 'left', title: { display: true, text: '°F' } },
+              y1: { type: 'linear', position: 'right', grid: { drawOnChartArea: false }, title: { display: true, text: 'inches' }, beginAtZero: true },
             },
+          },
+        });
+      }
+
+      function renderEtChart(data) {
+        destroyChart('et');
+        const rows = data.referenceET || [];
+        if (rows.length === 0) return;
+
+        chartInstances.et = new Chart(document.getElementById('etChart'), {
+          type: 'line',
+          data: {
+            labels: rows.map(r => r.date.slice(5)),
+            datasets: [{
+              label: 'Reference ETo (inches)',
+              data: rows.map(r => r.reference_eto),
+              borderColor: colors.green,
+              backgroundColor: colors.lightGreen,
+              fill: true,
+              tension: 0.3,
+            }],
+          },
+          options: {
+            responsive: true,
+            plugins: { legend: { display: false } },
+            scales: { y: { beginAtZero: true, title: { display: true, text: 'inches/day' } } },
           },
         });
       }
@@ -260,56 +430,51 @@ export function chartsPageContent() {
             indexAxis: 'y',
             responsive: true,
             plugins: { legend: { display: false } },
-            scales: {
-              x: {
-                beginAtZero: true,
-                max: 100,
-                title: { display: true, text: '%' },
-              },
-            },
+            scales: { x: { beginAtZero: true, max: 100, title: { display: true, text: '%' } } },
           },
         });
       }
 
       async function refreshRangeChart(kind, days) {
         const data = await fetchChartData(days);
-        switch (kind) {
-          case 'usage':
-            renderUsageChart(data);
-            break;
-          case 'cost':
-            renderCostChart(data);
-            break;
-          case 'decision':
-            renderDecisionChart(data);
-            break;
-          case 'precip':
-            renderPrecipChart(data);
-            break;
-          default:
-            break;
-        }
+        const dispatch = {
+          usage: renderUsageChart,
+          cost: renderCostChart,
+          decision: renderDecisionChart,
+          precip: renderPrecipChart,
+          predvsactual: renderPredVsActualChart,
+          weather: renderWeatherChart,
+          et: renderEtChart,
+        };
+        if (dispatch[kind]) dispatch[kind](data);
       }
 
-      document.getElementById('usage-days').addEventListener('change', event => {
-        refreshRangeChart('usage', Number(event.target.value)).catch(err => console.error('Usage chart load failed:', err));
-      });
-      document.getElementById('cost-days').addEventListener('change', event => {
-        refreshRangeChart('cost', Number(event.target.value)).catch(err => console.error('Cost chart load failed:', err));
-      });
-      document.getElementById('decision-days').addEventListener('change', event => {
-        refreshRangeChart('decision', Number(event.target.value)).catch(err => console.error('Decision chart load failed:', err));
-      });
-      document.getElementById('precip-days').addEventListener('change', event => {
-        refreshRangeChart('precip', Number(event.target.value)).catch(err => console.error('Precipitation chart load failed:', err));
-      });
+      function attachRangeListener(id, kind) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.addEventListener('change', event => {
+          refreshRangeChart(kind, Number(event.target.value)).catch(err => console.error(kind + ' chart load failed:', err));
+        });
+      }
 
-      Promise.all([fetchChartData(14), fetchChartData(7)])
-        .then(([defaultData, precipData]) => {
+      attachRangeListener('usage-days', 'usage');
+      attachRangeListener('cost-days', 'cost');
+      attachRangeListener('decision-days', 'decision');
+      attachRangeListener('precip-days', 'precip');
+      attachRangeListener('predvsactual-days', 'predvsactual');
+      attachRangeListener('weather-days', 'weather');
+      attachRangeListener('et-days', 'et');
+
+      Promise.all([fetchChartData(14), fetchChartData(7), fetchChartData(30)])
+        .then(([defaultData, precipData, thirtyDayData]) => {
           renderUsageChart(defaultData);
           renderCostChart(defaultData);
+          renderBillsChart(defaultData);
+          renderPredVsActualChart(defaultData);
           renderDecisionChart(defaultData);
           renderPrecipChart(precipData);
+          renderWeatherChart(thirtyDayData);
+          renderEtChart(thirtyDayData);
           renderMoistureChart(defaultData);
         })
         .catch(err => console.error('Chart data load failed:', err));

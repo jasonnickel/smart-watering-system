@@ -81,6 +81,14 @@ export function layout(title, content, activeTab, options = {}) {
       </nav>`
     : '';
 
+  const footerHtml = showNav
+    ? `<footer class="footer" aria-label="Footer navigation">
+        <nav class="footer-nav">
+          ${tabs.map(tab => `<a href="${tab.path}"${activeTab === tab.id ? ' aria-current="page"' : ''}>${tab.label}</a>`).join('')}
+        </nav>
+      </footer>`
+    : '';
+
   const headerActionsHtml = showNav ? `<div class="header-actions">
       <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Toggle dark mode"></button>
       ${authEnabled ? `<form method="POST" action="/logout" style="margin:0">
@@ -111,10 +119,11 @@ export function layout(title, content, activeTab, options = {}) {
   <a class="skip-link" href="#main">Skip to main content</a>
   <header class="header">
     <div class="header-inner">
-      <div>
+      <div class="header-spacer" aria-hidden="true"></div>
+      <a class="header-title" href="/" aria-label="Go to dashboard">
         <h1>Taproot</h1>
         <p>Smart Irrigation System</p>
-      </div>
+      </a>
       ${headerActionsHtml}
     </div>
   </header>
@@ -122,6 +131,7 @@ export function layout(title, content, activeTab, options = {}) {
   <main id="main" class="container">
     ${content}
   </main>
+  ${footerHtml}
 </body>
 </html>`;
 }
