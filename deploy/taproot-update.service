@@ -1,0 +1,15 @@
+[Unit]
+Description=Taproot - Auto Update from GitHub
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/smart-water
+ExecStart=/opt/smart-water/deploy/auto-update.sh
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=taproot-update
+
+# Don't let a stuck git fetch hang forever
+TimeoutStartSec=300
