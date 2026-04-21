@@ -1,0 +1,50 @@
+# Local water restrictions configuration.
+#
+# When your municipality declares drought restrictions, edit this file and
+# restart Taproot. The decision engine will enforce the rules as a hard
+# safety check - restricted decisions are always SKIP with a logged reason.
+#
+# Leave enabled=false when no restrictions are active; Taproot ignores the
+# rest of the file. Restrictions live outside your normal scheduling windows,
+# so you can keep your preferred watering window defined in config.js.
+#
+# Override location: ~/.taproot/restrictions.yaml (takes precedence).
+
+enabled: false
+
+# Informational - stage number published by your utility (1/2/3...).
+stage: 0
+
+# Maximum watering days per rolling 7-day window, per zone.
+# Golden Stage 1 = 2. Stage 2 = 1. Stage 3 = 0 (no watering).
+max_days_per_week: 7
+
+# Allowed watering hour windows (24h). A single window wraps midnight if
+# start > end - e.g. start: 18, end: 10 means 6pm-10am next day.
+# Golden Stage 1: 6pm-10am (water not permitted between 10am and 6pm).
+allowed_hours:
+  - start: 0
+    end: 24
+
+# Zone types exempted from the per-week and per-hour rules. Most utilities
+# exempt drip irrigation and hand watering.
+exempt_zone_types: []
+
+# Penalty info (informational, surfaced in decision logs + daily summary).
+penalty_first_offense: ""
+penalty_max: ""
+
+# Leak detection: if a single day exceeds this (AquaHawk reading), flag as
+# possible leak. Golden Stage 1 requires leaks fixed within 10 days.
+leak_alert_gallons_per_day: 0
+leak_repair_grace_days: 0
+
+# Optional: restrict to specific days of the week (0=Sun .. 6=Sat).
+# Leave empty to let the max_days_per_week cap choose dynamically.
+# Some utilities use address-based day assignment; Golden does not.
+allowed_days: []
+
+# Metadata surfaced in logs and dashboard.
+source_url: ""
+effective_from: ""
+effective_until: ""

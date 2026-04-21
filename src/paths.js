@@ -26,6 +26,8 @@ export const LEGACY_ZONES_PATH = join(LEGACY_HOME_DIR, 'zones.yaml');
 export const TAPROOT_RATES_PATH = join(TAPROOT_HOME_DIR, 'rates.yaml');
 export const LEGACY_RATES_PATH = join(LEGACY_HOME_DIR, 'rates.yaml');
 
+export const TAPROOT_RESTRICTIONS_PATH = join(TAPROOT_HOME_DIR, 'restrictions.yaml');
+
 export const TAPROOT_STATUS_PAGE_PATH = join(TAPROOT_HOME_DIR, 'status.html');
 export const LEGACY_STATUS_PAGE_PATH = join(LEGACY_HOME_DIR, 'status.html');
 

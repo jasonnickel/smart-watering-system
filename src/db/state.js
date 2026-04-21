@@ -521,3 +521,251 @@ export function getStatusJSON(dateStr) {
     } : null,
   };
 }
+
+// -- Watering days by zone (for rolling-window restriction checks) ------------
+
+/**
+ * For each zone, return the set of local YYYY-MM-DD dates on which that zone
+ * received water in the last `days` days. Used to enforce max-days-per-week
+ * restrictions without caching state elsewhere.
+ *
+ * @param {number} days - Rolling window size (days)
+ * @returns {Map<string, Set<string>>} zoneId -> Set of date strings
+ */
+export function getWateringDatesByZone(days = 7) {
+  const db = getDB();
+  const since = new Date(Date.now() - days * 86400000).toISOString();
+  const runs = db.prepare(`
+    SELECT timestamp, zones_json, shadow FROM runs
+    WHERE timestamp > ?
+      AND phase = 'VERIFY'
+      AND decision = 'WATER'
+      AND success = 1
+  `).all(since);
+
+  const byZone = new Map();
+  for (const r of runs) {
+    if (!r.zones_json) continue;
+    let zones;
+    try {
+      zones = JSON.parse(r.zones_json);
+    } catch {
+      continue;
+    }
+    if (!Array.isArray(zones)) continue;
+    const dateStr = r.timestamp.slice(0, 10);
+    for (const z of zones) {
+      const id = z.id ?? z.zoneId;
+      if (!id) continue;
+      if (!byZone.has(id)) byZone.set(id, new Set());
+      byZone.get(id).add(dateStr);
+    }
+  }
+  return byZone;
+}
+
+// -- Utility meter ground truth (AquaHawk / utility portal) -------------------
+
+/**
+ * Bulk upsert utility usage readings. Dedup key: (start_time, interval, source).
+ * Expected row fields match the utility_usage table columns.
+ *
+ * @param {Array} rows
+ * @param {string} source - e.g. 'aquahawk'
+ * @param {string} accountNumber
+ */
+export function bulkUpsertUtilityUsage(rows, source, accountNumber) {
+  if (!rows || rows.length === 0) return 0;
+  const db = getDB();
+  const stmt = db.prepare(`
+    INSERT INTO utility_usage (
+      start_time, interval, end_time, gallons, gallons_min, gallons_max, gallons_samples,
+      rainfall_in, high_temp_f, low_temp_f, avg_temp_f, source, account_number, fetched_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+    ON CONFLICT(start_time, interval, source) DO UPDATE SET
+      end_time = excluded.end_time,
+      gallons = excluded.gallons,
+      gallons_min = excluded.gallons_min,
+      gallons_max = excluded.gallons_max,
+      gallons_samples = excluded.gallons_samples,
+      rainfall_in = excluded.rainfall_in,
+      high_temp_f = excluded.high_temp_f,
+      low_temp_f = excluded.low_temp_f,
+      avg_temp_f = excluded.avg_temp_f,
+      account_number = excluded.account_number,
+      fetched_at = excluded.fetched_at
+  `);
+
+  const tx = db.transaction(batch => {
+    for (const r of batch) {
+      stmt.run(
+        r.start_time,
+        r.interval,
+        r.end_time ?? null,
+        r.gallons ?? null,
+        r.gallons_min ?? null,
+        r.gallons_max ?? null,
+        r.gallons_samples ?? null,
+        r.rainfall_in ?? null,
+        r.high_temp_f ?? null,
+        r.low_temp_f ?? null,
+        r.avg_temp_f ?? null,
+        source,
+        accountNumber ?? null
+      );
+    }
+  });
+
+  tx(rows);
+  return rows.length;
+}
+
+export function getUtilityUsage({ interval, since, until } = {}) {
+  const db = getDB();
+  const clauses = [];
+  const args = [];
+  if (interval) {
+    clauses.push('interval = ?');
+    args.push(interval);
+  }
+  if (since) {
+    clauses.push('start_time >= ?');
+    args.push(since);
+  }
+  if (until) {
+    clauses.push('start_time < ?');
+    args.push(until);
+  }
+  const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
+  return db.prepare(`SELECT * FROM utility_usage ${where} ORDER BY start_time ASC`).all(...args);
+}
+
+export function latestUtilityUsageTimestamp(interval, source = 'aquahawk') {
+  const row = getDB()
+    .prepare(`SELECT MAX(start_time) AS ts FROM utility_usage WHERE interval = ? AND source = ?`)
+    .get(interval, source);
+  return row?.ts || null;
+}
+
+// -- Utility bills ------------------------------------------------------------
+
+export function upsertUtilityBill(bill) {
+  const db = getDB();
+  db.prepare(`
+    INSERT INTO utility_bills (
+      bill_date, period_start, period_end, days,
+      reading_start_kgal, reading_end_kgal, usage_kgal,
+      awc_kgal,
+      tier1_usage_kgal, tier1_rate,
+      tier2_usage_kgal, tier2_rate,
+      tier3_usage_kgal, tier3_rate,
+      water_service, water_base_fee, wastewater, drainage, trash, other_charges, total,
+      source_path
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(bill_date) DO UPDATE SET
+      period_start = excluded.period_start,
+      period_end = excluded.period_end,
+      days = excluded.days,
+      reading_start_kgal = excluded.reading_start_kgal,
+      reading_end_kgal = excluded.reading_end_kgal,
+      usage_kgal = excluded.usage_kgal,
+      awc_kgal = excluded.awc_kgal,
+      tier1_usage_kgal = excluded.tier1_usage_kgal,
+      tier1_rate = excluded.tier1_rate,
+      tier2_usage_kgal = excluded.tier2_usage_kgal,
+      tier2_rate = excluded.tier2_rate,
+      tier3_usage_kgal = excluded.tier3_usage_kgal,
+      tier3_rate = excluded.tier3_rate,
+      water_service = excluded.water_service,
+      water_base_fee = excluded.water_base_fee,
+      wastewater = excluded.wastewater,
+      drainage = excluded.drainage,
+      trash = excluded.trash,
+      other_charges = excluded.other_charges,
+      total = excluded.total,
+      source_path = excluded.source_path,
+      fetched_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+  `).run(
+    bill.bill_date,
+    bill.period_start,
+    bill.period_end,
+    bill.days ?? null,
+    bill.reading_start_kgal ?? null,
+    bill.reading_end_kgal ?? null,
+    bill.usage_kgal ?? null,
+    bill.awc_kgal ?? null,
+    bill.tier1_usage_kgal ?? null,
+    bill.tier1_rate ?? null,
+    bill.tier2_usage_kgal ?? null,
+    bill.tier2_rate ?? null,
+    bill.tier3_usage_kgal ?? null,
+    bill.tier3_rate ?? null,
+    bill.water_service ?? null,
+    bill.water_base_fee ?? null,
+    bill.wastewater ?? null,
+    bill.drainage ?? null,
+    bill.trash ?? null,
+    bill.other_charges ?? null,
+    bill.total ?? null,
+    bill.source_path ?? null
+  );
+}
+
+export function getUtilityBills({ since } = {}) {
+  const db = getDB();
+  if (since) {
+    return db.prepare(`SELECT * FROM utility_bills WHERE period_end >= ? ORDER BY bill_date ASC`).all(since);
+  }
+  return db.prepare(`SELECT * FROM utility_bills ORDER BY bill_date ASC`).all();
+}
+
+// -- Utility rate regime history ---------------------------------------------
+
+export function upsertRateRegime(regime) {
+  const db = getDB();
+  db.prepare(`
+    INSERT INTO utility_rate_schedule (
+      effective_from, provider, awc_kgal,
+      tier1_rate, tier2_rate, tier3_rate,
+      water_base_fee, wastewater_fee, wastewater_rate_per_kgal,
+      drainage_fee, trash_fee, source, notes
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(effective_from) DO UPDATE SET
+      provider = excluded.provider,
+      awc_kgal = excluded.awc_kgal,
+      tier1_rate = excluded.tier1_rate,
+      tier2_rate = excluded.tier2_rate,
+      tier3_rate = excluded.tier3_rate,
+      water_base_fee = excluded.water_base_fee,
+      wastewater_fee = excluded.wastewater_fee,
+      wastewater_rate_per_kgal = excluded.wastewater_rate_per_kgal,
+      drainage_fee = excluded.drainage_fee,
+      trash_fee = excluded.trash_fee,
+      source = excluded.source,
+      notes = excluded.notes
+  `).run(
+    regime.effective_from,
+    regime.provider ?? null,
+    regime.awc_kgal ?? null,
+    regime.tier1_rate ?? null,
+    regime.tier2_rate ?? null,
+    regime.tier3_rate ?? null,
+    regime.water_base_fee ?? null,
+    regime.wastewater_fee ?? null,
+    regime.wastewater_rate_per_kgal ?? null,
+    regime.drainage_fee ?? null,
+    regime.trash_fee ?? null,
+    regime.source ?? null,
+    regime.notes ?? null
+  );
+}
+
+export function getRateRegimeAt(date) {
+  const db = getDB();
+  return db.prepare(`
+    SELECT * FROM utility_rate_schedule
+    WHERE effective_from <= ?
+    ORDER BY effective_from DESC
+    LIMIT 1
+  `).get(date);
+}

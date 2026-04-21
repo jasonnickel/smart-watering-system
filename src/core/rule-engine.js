@@ -12,6 +12,11 @@ import {
 } from './soil-moisture.js';
 import { buildSoakSchedule } from './soak.js';
 import { calculateCost } from './finance.js';
+import {
+  isRestrictionWindowActive,
+  isHourAllowed,
+  applyZoneRestrictions,
+} from './restrictions.js';
 
 /**
  * Make a daily watering decision.
@@ -27,6 +32,14 @@ import { calculateCost } from './finance.js';
  * @returns {object} { decision: 'WATER'|'SKIP', reason, zones?, gallons?, cost? }
  */
 export function getWateringDecision(ctx) {
+  const now = ctx.now || new Date();
+
+  // Stage 0: Municipal water restrictions (global hour check)
+  const restrictionSkip = checkGlobalRestrictions(now, ctx.restrictions);
+  if (restrictionSkip) {
+    return { decision: 'SKIP', reason: restrictionSkip };
+  }
+
   // Stage 1: Safety checks
   const skipReasons = checkSkipConditions(ctx.weather, CONFIG.schedule.skipConditions);
   if (skipReasons.length > 0) {
@@ -45,11 +58,23 @@ export function getWateringDecision(ctx) {
     return { decision: 'SKIP', reason: 'No zones require watering' };
   }
 
+  // Stage 3.5: Per-zone restriction filter (days-per-week, allowed days, type exemption)
+  const filtered = applyPerZoneRestrictions(zonesToWater, now, ctx);
+  if (filtered.allowedZones.length === 0) {
+    const blockedNames = filtered.blockedZones.map(z => `${z.name} (${z.restrictionReason})`).join('; ');
+    return {
+      decision: 'SKIP',
+      reason: `Water restrictions blocked all zones: ${blockedNames}`,
+      blockedZones: filtered.blockedZones,
+    };
+  }
+
   // Sort by urgency score (lower = more urgent)
-  zonesToWater.sort((a, b) => a.score - b.score);
+  filtered.allowedZones.sort((a, b) => a.score - b.score);
+  const activeZones = filtered.allowedZones;
 
   // Stage 4: Budget check
-  const totals = calculateRunTotals(zonesToWater, ctx.financeData.cumulativeGallons);
+  const totals = calculateRunTotals(activeZones, ctx.financeData.cumulativeGallons);
 
   if (ctx.dailyUsage.gallons + totals.gallons > CONFIG.schedule.maxDailyGallons) {
     return { decision: 'SKIP', reason: 'Budget - Daily gallon limit exceeded' };
@@ -59,13 +84,18 @@ export function getWateringDecision(ctx) {
   }
 
   // Stage 5: Build schedule with soak cycles
-  const schedule = buildSoakSchedule(zonesToWater);
+  const schedule = buildSoakSchedule(activeZones);
+
+  const blockedNote = filtered.blockedZones.length > 0
+    ? ` (restriction-blocked: ${filtered.blockedZones.map(z => z.name).join(', ')})`
+    : '';
 
   return {
     decision: 'WATER',
-    reason,
+    reason: reason + blockedNote,
     zones: schedule,
-    originalZones: zonesToWater,
+    originalZones: activeZones,
+    blockedZones: filtered.blockedZones,
     gallons: totals.gallons,
     cost: totals.cost,
   };
@@ -78,6 +108,14 @@ export function getWateringDecision(ctx) {
  * @returns {object} Decision object
  */
 export function getEmergencyCoolingDecision(ctx) {
+  const now = ctx.now || new Date();
+
+  // Municipal water restrictions apply to emergency cooling too.
+  const restrictionSkip = checkGlobalRestrictions(now, ctx.restrictions);
+  if (restrictionSkip) {
+    return { decision: 'SKIP', reason: `Cooling ${restrictionSkip}` };
+  }
+
   const skipReasons = checkSkipConditions(ctx.weather, CONFIG.emergency.skipConditions);
   if (skipReasons.length > 0) {
     return { decision: 'SKIP', reason: `Cooling Skip - ${skipReasons.join(', ')}` };
@@ -129,7 +167,15 @@ export function getEmergencyCoolingDecision(ctx) {
     return { decision: 'SKIP', reason: 'No lawn zones need cooling' };
   }
 
-  const totals = calculateRunTotals(zonesToCool, ctx.financeData.cumulativeGallons);
+  // Per-zone restriction filter also applies to cooling runs.
+  const filteredCool = applyPerZoneRestrictions(zonesToCool, now, ctx);
+  if (filteredCool.allowedZones.length === 0) {
+    const blockedNames = filteredCool.blockedZones.map(z => `${z.name} (${z.restrictionReason})`).join('; ');
+    return { decision: 'SKIP', reason: `Cooling blocked by restrictions: ${blockedNames}` };
+  }
+  const activeCoolZones = filteredCool.allowedZones;
+
+  const totals = calculateRunTotals(activeCoolZones, ctx.financeData.cumulativeGallons);
 
   if (ctx.dailyUsage.gallons + totals.gallons > CONFIG.schedule.maxDailyGallons) {
     return { decision: 'SKIP', reason: 'Budget - Daily gallon limit exceeded' };
@@ -138,11 +184,33 @@ export function getEmergencyCoolingDecision(ctx) {
   return {
     decision: 'WATER',
     reason: `Emergency Cooling (Temp: ${ctx.weather.temp.toFixed(1)}F)`,
-    zones: zonesToCool,
-    originalZones: zonesToCool,
+    zones: activeCoolZones,
+    originalZones: activeCoolZones,
+    blockedZones: filteredCool.blockedZones,
     gallons: totals.gallons,
     cost: totals.cost,
   };
+}
+
+/**
+ * Global restriction gate - returns a skip reason string, or null if allowed.
+ * Blocks the entire run when the current hour is outside allowed windows.
+ */
+function checkGlobalRestrictions(now, restrictions) {
+  if (!restrictions || !isRestrictionWindowActive(restrictions, now)) return null;
+  const hour = now.getHours();
+  if (!isHourAllowed(hour, restrictions.allowedHours)) {
+    return `Restricted hours (stage ${restrictions.stage}) - hour ${hour} not in allowed windows`;
+  }
+  return null;
+}
+
+function applyPerZoneRestrictions(zones, now, ctx) {
+  if (!ctx.restrictions || !isRestrictionWindowActive(ctx.restrictions, now)) {
+    return { allowedZones: zones, blockedZones: [] };
+  }
+  const wateringDatesByZone = ctx.wateringDatesByZone || new Map();
+  return applyZoneRestrictions(zones, now, wateringDatesByZone, ctx.restrictions);
 }
 
 // --- Internal helpers ---

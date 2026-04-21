@@ -11,7 +11,11 @@ import { getSoilProfile } from '../api/usda-soil.js';
 import {
   logETValidation, getRecentETValidation,
   getCachedSoilSurvey, getNDVIHistory,
+  getUtilityUsage,
 } from '../db/state.js';
+import { aquaHawkFromConfig, flattenTimesery } from '../api/aquahawk.js';
+import { bulkUpsertUtilityUsage } from '../db/state.js';
+import { findUsageAnomalies } from './utility-backfill.js';
 
 // -- CoAgMet ET cross-validation ---------------------------------------------
 
@@ -212,5 +216,59 @@ export async function runDailyIntegrations(ctx, month) {
   // NDVI refresh (non-blocking, failures are logged but don't stop the run)
   refreshNDVIIfStale().catch(() => {});
 
+  // AquaHawk incremental pull + leak/anomaly scan (non-blocking)
+  refreshUtilityUsage(ctx).catch(err => log(1, `Utility usage refresh failed: ${err.message}`));
+
   return results;
+}
+
+/**
+ * Pull the last 14 days of AquaHawk usage and flag any day that exceeds
+ * trailing-median flow by >= 10x (and a configurable absolute floor).
+ * Logs anomalies so the advisor/daily summary can surface them.
+ *
+ * This is what would have caught the 2024-06-05 event (15.6k gal vs 696 gal
+ * median) in real time.
+ */
+export async function refreshUtilityUsage(ctx) {
+  const client = aquaHawkFromConfig();
+  if (!client) return { skipped: 'not configured' };
+
+  try {
+    await client.authenticate();
+    const end = new Date();
+    const start = new Date(end.getTime() - 14 * 86400000);
+
+    const daily = await client.getUsage({ start, end, interval: '1 day' });
+    const dailyRows = (daily.timeseries || []).map(flattenTimesery);
+    bulkUpsertUtilityUsage(dailyRows, 'aquahawk', client.accountNumber);
+
+    // Use 60-day rolling window from DB so the trailing median is stable
+    const sinceIso = new Date(end.getTime() - 60 * 86400000).toISOString();
+    const storedDaily = getUtilityUsage({ interval: '1 day', since: sinceIso });
+
+    const restrictions = ctx?.restrictions;
+    const floor = restrictions?.leakAlertGallonsPerDay > 0
+      ? restrictions.leakAlertGallonsPerDay
+      : 5000;
+
+    const anomalies = findUsageAnomalies(storedDaily, { ratio: 10, minGallons: floor });
+    const lastTwoWeeks = anomalies.filter(a => {
+      const ageDays = (Date.now() - new Date(a.date).getTime()) / 86400000;
+      return ageDays <= 14;
+    });
+
+    if (lastTwoWeeks.length > 0) {
+      for (const a of lastTwoWeeks) {
+        log(0, `ANOMALY: ${a.date} usage ${a.gallons.toFixed(0)} gal (${a.ratio.toFixed(1)}x trailing median ${a.trailing_median.toFixed(0)} gal) - possible leak or stuck zone`);
+      }
+    } else {
+      log(2, `Utility usage refresh: ${dailyRows.length} daily rows, no anomalies`);
+    }
+
+    return { dailyRowsWritten: dailyRows.length, anomalies: lastTwoWeeks };
+  } catch (err) {
+    log(1, `AquaHawk refresh failed: ${err.message}`);
+    return { error: err.message };
+  }
 }

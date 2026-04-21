@@ -182,6 +182,72 @@ CREATE TABLE IF NOT EXISTS et_validation (
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 
+-- Utility meter ground truth from AquaHawk-style portal (per-reading, any interval)
+CREATE TABLE IF NOT EXISTS utility_usage (
+  start_time TEXT NOT NULL,
+  interval TEXT NOT NULL,          -- '1 hour', '1 day', '1 month'
+  end_time TEXT,
+  gallons REAL,
+  gallons_min REAL,                -- per-reading min within interval
+  gallons_max REAL,                -- per-reading max within interval
+  gallons_samples INTEGER,         -- number of underlying meter readings
+  rainfall_in REAL,                -- from portal's rainfall data (if provided)
+  high_temp_f REAL,
+  low_temp_f REAL,
+  avg_temp_f REAL,
+  source TEXT NOT NULL,            -- 'aquahawk'
+  account_number TEXT,
+  fetched_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  PRIMARY KEY (start_time, interval, source)
+);
+
+-- Utility billing ground truth (per bill, parsed from PDFs or portal)
+CREATE TABLE IF NOT EXISTS utility_bills (
+  bill_date TEXT PRIMARY KEY,      -- YYYY-MM-DD from the bill
+  period_start TEXT NOT NULL,
+  period_end TEXT NOT NULL,
+  days INTEGER,
+  reading_start_kgal INTEGER,      -- meter odometer at period start (thousands of gallons)
+  reading_end_kgal INTEGER,
+  usage_kgal INTEGER,              -- billed usage (as stated on bill)
+  awc_kgal INTEGER,                -- Average Winter Consumption tier threshold for this account
+  tier1_usage_kgal INTEGER,
+  tier1_rate REAL,
+  tier2_usage_kgal INTEGER,
+  tier2_rate REAL,
+  tier3_usage_kgal INTEGER,
+  tier3_rate REAL,
+  water_service REAL,              -- usage-based water charge
+  water_base_fee REAL,
+  wastewater REAL,
+  drainage REAL,
+  trash REAL,
+  other_charges REAL,              -- catch-all for misc line items
+  total REAL,                      -- current bill total
+  source_path TEXT,                -- path to source PDF (relative to project .private) or 'portal'
+  fetched_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+-- Rate regime history (utility rate schedules change over time)
+CREATE TABLE IF NOT EXISTS utility_rate_schedule (
+  effective_from TEXT PRIMARY KEY, -- YYYY-MM-DD; regime starts this date
+  provider TEXT,
+  awc_kgal INTEGER,
+  tier1_rate REAL,
+  tier2_rate REAL,
+  tier3_rate REAL,
+  water_base_fee REAL,
+  wastewater_fee REAL,
+  wastewater_rate_per_kgal REAL,
+  drainage_fee REAL,
+  trash_fee REAL,
+  source TEXT,                     -- 'rates.yaml', 'bill:<date>', 'manual'
+  notes TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_utility_usage_start ON utility_usage(start_time DESC, interval);
+CREATE INDEX IF NOT EXISTS idx_utility_bills_period ON utility_bills(period_end DESC);
+
 CREATE INDEX IF NOT EXISTS idx_weather_history_date ON weather_history(date DESC);
 CREATE INDEX IF NOT EXISTS idx_reference_et_date ON reference_et(date DESC);
 CREATE INDEX IF NOT EXISTS idx_ndvi_history_period ON ndvi_history(period_from DESC);
