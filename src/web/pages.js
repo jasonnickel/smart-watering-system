@@ -32,6 +32,29 @@ import {
 
 // -- Shared helpers ----------------------------------------------------------
 
+/**
+ * Cost estimate for a raw gallon total using the configured tiered water rate
+ * schedule. Treats the total as fresh (tier position starts at 0) - good
+ * enough for per-day / per-month / per-cycle sidebar stats where the tier
+ * context is self-contained. Uses CONFIG.finance.waterRates.
+ */
+function estimateCostUSD(gallons) {
+  const rates = CONFIG.finance?.waterRates || [];
+  if (!gallons || gallons <= 0 || rates.length === 0) return 0;
+  let remaining = gallons;
+  let cost = 0;
+  let lower = 0;
+  for (const tier of rates) {
+    const upper = tier.thresholdGallons;
+    const billable = Math.min(remaining, Math.max(0, upper - lower));
+    cost += (billable / 1000) * tier.ratePer1000Gal;
+    remaining -= billable;
+    lower = upper;
+    if (remaining <= 0) break;
+  }
+  return cost;
+}
+
 function secretField(id, name, label, isSaved, placeholder = '') {
   if (isSaved) {
     return `<div class="form-row">
@@ -701,7 +724,8 @@ export function dashboardPage(query, zonesPath, csrf) {
         ${lastExplanation ? `<p class="card-footnote">${escapeHtml(lastExplanation)}</p>` : ''}
       </div>
       ${setupComplete ? `<div class="card">
-        <h2>Water Usage</h2>
+        <h2>Taproot Usage</h2>
+        <p class="helper">Water Taproot has commanded. In shadow mode this stays at zero - nothing is actuated.</p>
         <div class="stat-list">
           <div class="stat"><span>Today</span><span>${status.todayUsage.gallons.toFixed(0)} gal / $${status.todayUsage.cost.toFixed(2)}</span></div>
           <div class="stat"><span>This month</span><span>${finance?.monthly_gallons?.toFixed(0) || 0} gal / $${finance?.monthly_cost?.toFixed(2) || '0.00'}</span></div>
@@ -709,6 +733,16 @@ export function dashboardPage(query, zonesPath, csrf) {
         </div>
       </div>` : ''}
     </div>
+
+    ${setupComplete && status.meterUsage?.configured ? `<div class="card">
+      <h2>Meter Usage (AquaHawk)</h2>
+      <p class="helper">Total household water from your utility meter (indoor + outdoor). Updated daily; most recent reading ${escapeHtml(status.meterUsage.latestReading?.slice(0, 10) || 'unknown')}.</p>
+      <div class="stat-list">
+        <div class="stat"><span>Today</span><span>${status.meterUsage.today.gallons.toFixed(0)} gal / $${estimateCostUSD(status.meterUsage.today.gallons).toFixed(2)}</span></div>
+        <div class="stat"><span>This month</span><span>${status.meterUsage.thisMonth.gallons.toFixed(0)} gal / $${estimateCostUSD(status.meterUsage.thisMonth.gallons).toFixed(2)}</span></div>
+        <div class="stat"><span>Billing cycle (since ${escapeHtml(status.meterUsage.billingCycle.startDate)})</span><span>${status.meterUsage.billingCycle.gallons.toFixed(0)} gal / $${estimateCostUSD(status.meterUsage.billingCycle.gallons).toFixed(2)}</span></div>
+      </div>
+    </div>` : ''}
 
     ${hasMoistureData ? `<div class="card">
       <h2>Soil Moisture</h2>
