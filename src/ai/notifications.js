@@ -3,11 +3,11 @@
 // context-aware messages for the homeowner.
 
 import { callAdvisorModel, aiNarrationEnabled, collectAdvisorInsights } from './advisor.js';
-import { getCachedWeather, getRecentDiscrepancies, getSoilMoisture } from '../db/state.js';
+import { getCachedWeather, getRecentDiscrepancies, getSoilMoistureRows } from '../db/state.js';
 import { localDateStr } from '../time.js';
 
 function buildAlertContext(alert) {
-  const moisture = getSoilMoisture();
+  const moisture = getSoilMoistureRows();
   const discrepancies = getRecentDiscrepancies(24);
   const ambientCache = getCachedWeather('ambient');
   const forecastCache = getCachedWeather('openmeteo_forecast');

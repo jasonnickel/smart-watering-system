@@ -13,6 +13,7 @@ import yaml from 'js-yaml';
 import { log } from '../log.js';
 import { PROJECT_ROOT, TAPROOT_RESTRICTIONS_PATH } from '../paths.js';
 import { join } from 'node:path';
+import { localDateStr, localHour, localWeekday } from '../time.js';
 
 const PROJECT_PATH = join(PROJECT_ROOT, 'restrictions.yaml');
 const HOME_PATH = TAPROOT_RESTRICTIONS_PATH;
@@ -118,13 +119,22 @@ export function isHourAllowed(hour, windows) {
  */
 export function isRestrictionWindowActive(restrictions, now = new Date()) {
   if (!restrictions.enabled) return false;
+  const today = localDateStr(now);
   if (restrictions.effectiveFrom) {
-    const from = new Date(restrictions.effectiveFrom);
-    if (Number.isFinite(from.getTime()) && now < from) return false;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(restrictions.effectiveFrom)) {
+      if (today < restrictions.effectiveFrom) return false;
+    } else {
+      const from = new Date(restrictions.effectiveFrom);
+      if (Number.isFinite(from.getTime()) && now < from) return false;
+    }
   }
   if (restrictions.effectiveUntil) {
-    const until = new Date(restrictions.effectiveUntil);
-    if (Number.isFinite(until.getTime()) && now > until) return false;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(restrictions.effectiveUntil)) {
+      if (today > restrictions.effectiveUntil) return false;
+    } else {
+      const until = new Date(restrictions.effectiveUntil);
+      if (Number.isFinite(until.getTime()) && now > until) return false;
+    }
   }
   return true;
 }
@@ -150,7 +160,7 @@ export function checkZoneRestriction(zone, now, wateringDates, restrictions) {
     return { allowed: true, reason: '', meta: { exempt: true, type: zoneType } };
   }
 
-  const hour = now.getHours();
+  const hour = localHour(now);
   if (!isHourAllowed(hour, restrictions.allowedHours)) {
     return {
       allowed: false,
@@ -167,7 +177,7 @@ export function checkZoneRestriction(zone, now, wateringDates, restrictions) {
     };
   }
 
-  const today = toLocalDateString(now);
+  const today = localDateStr(now);
   const daysUsed = new Set(wateringDates);
   const alreadyUsed = daysUsed.has(today);
   const effectiveCount = daysUsed.size + (alreadyUsed ? 0 : 0);
@@ -183,7 +193,7 @@ export function checkZoneRestriction(zone, now, wateringDates, restrictions) {
   }
 
   if (restrictions.allowedDays.length > 0) {
-    const dow = now.getDay();
+    const dow = localWeekday(now);
     if (!restrictions.allowedDays.includes(dow)) {
       return {
         allowed: false,
@@ -198,10 +208,6 @@ export function checkZoneRestriction(zone, now, wateringDates, restrictions) {
     reason: '',
     meta: { daysUsedThisWeek: daysUsed.size, maxDaysPerWeek: restrictions.maxDaysPerWeek },
   };
-}
-
-function toLocalDateString(date) {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
 function formatWindows(windows) {

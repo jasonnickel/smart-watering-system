@@ -6,7 +6,7 @@ import { localDateStr } from '../time.js';
 import CONFIG from '../config.js';
 import {
   getStatus, getRunsSince, getFinanceData, getDailyUsage,
-  getSoilMoisture, getCachedWeather, getRecentDiscrepancies,
+  getSoilMoistureRows, getCachedWeather, getRecentDiscrepancies,
   getWeatherHistory, getRecentReferenceET, getNDVIHistory,
 } from '../db/state.js';
 import { collectAdvisorInsights } from './advisor.js';
@@ -60,7 +60,7 @@ function buildCompactContext() {
   const status = getStatus(todayStr);
   const finance = getFinanceData();
   const todayUsage = getDailyUsage(todayStr);
-  const moisture = getSoilMoisture();
+  const moisture = getSoilMoistureRows();
 
   const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString();
   const recentRuns = getRunsSince(weekAgo);
@@ -74,7 +74,7 @@ function buildCompactContext() {
   if (ambientCache) {
     try {
       const w = JSON.parse(ambientCache.data_json);
-      weatherLine = `${w.temp}F, ${w.humidity}% RH, wind ${w.windSpeed} mph, rain24h ${w.dailyrainin || 0}" (as of ${ambientCache.fetched_at})`;
+      weatherLine = `${w.temp}F, ${w.humidity}% RH, wind ${w.windSpeed} mph, rain24h ${w.rainLast24h || 0}" (as of ${ambientCache.fetched_at})`;
     } catch { /* empty */ }
   }
 

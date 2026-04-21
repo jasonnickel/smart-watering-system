@@ -3,7 +3,7 @@
 // Pure function: takes context, returns decision. No side effects.
 
 import CONFIG from '../config.js';
-import { parseStoredTimestamp } from '../time.js';
+import { localHour, parseStoredTimestamp } from '../time.js';
 import {
   totalCapacity,
   triggerLevel,
@@ -198,7 +198,7 @@ export function getEmergencyCoolingDecision(ctx) {
  */
 function checkGlobalRestrictions(now, restrictions) {
   if (!restrictions || !isRestrictionWindowActive(restrictions, now)) return null;
-  const hour = now.getHours();
+  const hour = localHour(now);
   if (!isHourAllowed(hour, restrictions.allowedHours)) {
     return `Restricted hours (stage ${restrictions.stage}) - hour ${hour} not in allowed windows`;
   }

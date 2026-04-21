@@ -97,3 +97,15 @@ export function localHour(date = new Date()) {
 export function localMonth(date = new Date()) {
   return parseInt(date.toLocaleString('en-US', { timeZone: TZ, month: 'numeric' }), 10);
 }
+
+/**
+ * Get the day of week in the configured local timezone.
+ * Returns 0-6 where 0 = Sunday.
+ *
+ * @param {Date} date
+ * @returns {number}
+ */
+export function localWeekday(date = new Date()) {
+  const weekday = date.toLocaleString('en-US', { timeZone: TZ, weekday: 'short' });
+  return ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(weekday);
+}

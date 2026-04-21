@@ -5,6 +5,11 @@ import CONFIG from '../config.js';
 import { fetchWithRetry } from './http.js';
 import { log } from '../log.js';
 
+function asNumber(value, fallback = 0) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
 /**
  * Fetch current weather from the Ambient Weather station.
  *
@@ -27,10 +32,10 @@ export async function getCurrentWeather() {
   const result = {
     temp: reading.tempf ?? null,
     humidity: reading.humidity ?? null,
-    windSpeed: reading.windspeedmph ?? 0,
-    solarRadiation: reading.solarradiation ?? 0,
-    rainLast24h: reading.dailyrainin ?? 0,
-    hourlyRain: reading.hourlyrainin ?? 0,
+    windSpeed: asNumber(reading.windspeedmph),
+    solarRadiation: asNumber(reading.solarradiation),
+    rainLast24h: asNumber(reading['24hourrainin'] ?? reading.dailyrainin),
+    hourlyRain: asNumber(reading.hourlyrainin),
     timestamp: new Date().toISOString(),
   };
 
@@ -58,8 +63,8 @@ export async function getLiveRainCheck() {
     if (!reading) return null;
 
     return {
-      hourlyRain: reading.hourlyrainin ?? 0,
-      dailyRain: reading.dailyrainin ?? 0,
+      hourlyRain: asNumber(reading.hourlyrainin),
+      dailyRain: asNumber(reading['24hourrainin'] ?? reading.dailyrainin),
     };
   } catch (err) {
     log(1, `Live rain check failed: ${err.message}`);

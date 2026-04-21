@@ -24,6 +24,15 @@ import { getDefaultDatabasePath } from './paths.js';
 
 const DB_PATH = getDefaultDatabasePath();
 
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 async function main() {
   initDB(DB_PATH);
 
@@ -137,7 +146,7 @@ function buildEmailHTML(d) {
       : 0;
     const color = pct < 40 ? '#e53935' : pct < 60 ? '#f5a623' : '#4caf50';
     return `<tr>
-      <td style="padding:4px 8px;">Zone ${z.zone_number} (${z.zone_name})</td>
+      <td style="padding:4px 8px;">Zone ${z.zone_number} (${escapeHtml(z.zone_name)})</td>
       <td style="padding:4px 8px;">
         <div style="background:#eee;border-radius:4px;width:120px;height:16px;display:inline-block;">
           <div style="background:${color};border-radius:4px;height:16px;width:${Math.min(pct, 100)}%;"></div>
@@ -155,12 +164,12 @@ function buildEmailHTML(d) {
 
   const discrepancySection = d.discrepancies.length > 0
     ? `<h3 style="background:#fff3e0;padding:8px;border-radius:4px;margin-top:20px;">Weather Discrepancies (last 24h)</h3>
-       <ul>${d.discrepancies.map(disc => `<li>${disc.reason}</li>`).join('')}</ul>`
+       <ul>${d.discrepancies.map(disc => `<li>${escapeHtml(disc.reason)}</li>`).join('')}</ul>`
     : '';
 
   const advisorSection = d.advisorInsights.length > 0
     ? `<h3 style="background:#e8f5e9;padding:8px;border-radius:4px;margin-top:20px;">Advisor Insights</h3>
-       <ul>${d.advisorInsights.map(insight => `<li>${formatAdvisorInsight(insight)}</li>`).join('')}</ul>
+       <ul>${d.advisorInsights.map(insight => `<li>${escapeHtml(formatAdvisorInsight(insight))}</li>`).join('')}</ul>
        <p style="font-size:12px;color:#666;">Advisory only: these notes never change the deterministic watering decision engine on their own.</p>`
     : '';
 
@@ -177,17 +186,17 @@ function buildEmailHTML(d) {
 
   return `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;font-size:14px;color:#333;line-height:1.6;max-width:600px;">
     <h2 style="color:#1565c0;border-bottom:2px solid #1565c0;padding-bottom:5px;">Taproot Daily Report</h2>
-    <p>${d.todayStr}</p>
+    <p>${escapeHtml(d.todayStr)}</p>
 
     ${d.aiNarrative ? `<h3 style="background:#ede7f6;padding:8px;border-radius:4px;">Kimi Advisor</h3>
-    <p>${d.aiNarrative}</p>` : ''}
+    <p>${escapeHtml(d.aiNarrative)}</p>` : ''}
 
     <h3 style="background:#e8f5e9;padding:8px;border-radius:4px;">Overnight Activity</h3>
-    <p>${overnightText}</p>
+    <p>${escapeHtml(overnightText)}</p>
     ${d.yesterdayUsage.gallons > 0 ? `<p>Yesterday: ${d.yesterdayUsage.gallons.toFixed(0)} gallons, $${d.yesterdayUsage.cost.toFixed(2)}</p>` : ''}
 
     <h3 style="background:#e3f2fd;padding:8px;border-radius:4px;margin-top:20px;">Today's Forecast</h3>
-    <p>${d.forecastText}</p>
+    <p>${escapeHtml(d.forecastText)}</p>
 
     <h3 style="background:#f3e5f5;padding:8px;border-radius:4px;margin-top:20px;">Soil Moisture</h3>
     <table style="border-collapse:collapse;width:100%;">
@@ -198,7 +207,7 @@ function buildEmailHTML(d) {
     <p>Gallons: ${d.finance?.monthly_gallons?.toFixed(0) ?? 0} | Cost: $${d.finance?.monthly_cost?.toFixed(2) ?? '0.00'} | Cumulative: ${d.finance?.cumulative_gallons?.toFixed(0) ?? 0} gal</p>
 
     <h3 style="background:#efebe9;padding:8px;border-radius:4px;margin-top:20px;">Weather Data Source</h3>
-    <p>${d.weatherStatus}</p>
+    <p>${escapeHtml(d.weatherStatus)}</p>
 
     ${discrepancySection}
     ${advisorSection}

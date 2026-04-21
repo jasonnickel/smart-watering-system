@@ -49,7 +49,11 @@ export function parseCookies(req) {
   for (const pair of raw.split(';')) {
     const [name, ...rest] = pair.trim().split('=');
     if (!name) continue;
-    cookies[name] = decodeURIComponent(rest.join('='));
+    try {
+      cookies[name] = decodeURIComponent(rest.join('='));
+    } catch {
+      cookies[name] = rest.join('=');
+    }
   }
   return cookies;
 }

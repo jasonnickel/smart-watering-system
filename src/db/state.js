@@ -8,7 +8,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { mkdirSync, existsSync } from 'node:fs';
 import { log } from '../log.js';
-import { formatTimestamp, localDateStr } from '../time.js';
+import { formatTimestamp, localDateStr, parseStoredTimestamp } from '../time.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SCHEMA_PATH = join(__dirname, 'schema.sql');
@@ -116,6 +116,10 @@ export function getSoilMoisture() {
   return balances;
 }
 
+export function getSoilMoistureRows() {
+  return getDB().prepare('SELECT * FROM soil_moisture ORDER BY zone_number').all();
+}
+
 export function setSoilMoisture(zoneId, zoneNumber, zoneName, balanceInches, totalCapacity) {
   const timestamp = formatTimestamp();
   getDB().prepare(`
@@ -177,6 +181,26 @@ export function getDailyUsage(dateStr) {
 }
 
 export function updateDailyUsage(dateStr, gallons, cost, zonesJson) {
+  const existing = getDailyUsage(dateStr);
+  let mergedZones = {};
+
+  try {
+    mergedZones = existing.zones_json ? JSON.parse(existing.zones_json) : {};
+  } catch {
+    mergedZones = {};
+  }
+
+  try {
+    const incomingZones = zonesJson ? JSON.parse(zonesJson) : {};
+    for (const [zoneId, minutes] of Object.entries(incomingZones)) {
+      const parsedMinutes = Number(minutes);
+      if (!Number.isFinite(parsedMinutes)) continue;
+      mergedZones[zoneId] = (mergedZones[zoneId] || 0) + parsedMinutes;
+    }
+  } catch {
+    // Ignore malformed per-zone detail rather than failing usage accounting.
+  }
+
   getDB().prepare(`
     INSERT INTO daily_usage (date, gallons, cost, zones_json)
     VALUES (?, ?, ?, ?)
@@ -184,7 +208,7 @@ export function updateDailyUsage(dateStr, gallons, cost, zonesJson) {
       gallons = gallons + excluded.gallons,
       cost = cost + excluded.cost,
       zones_json = excluded.zones_json
-  `).run(dateStr, gallons, cost, zonesJson);
+  `).run(dateStr, gallons, cost, JSON.stringify(mergedZones));
 }
 
 // --- Weather Cache ---
@@ -537,10 +561,11 @@ export function getWateringDatesByZone(days = 7) {
   const since = new Date(Date.now() - days * 86400000).toISOString();
   const runs = db.prepare(`
     SELECT timestamp, zones_json, shadow FROM runs
-    WHERE timestamp > ?
+    WHERE julianday(timestamp) > julianday(?)
       AND phase = 'VERIFY'
       AND decision = 'WATER'
       AND success = 1
+      AND shadow = 0
   `).all(since);
 
   const byZone = new Map();
@@ -553,7 +578,9 @@ export function getWateringDatesByZone(days = 7) {
       continue;
     }
     if (!Array.isArray(zones)) continue;
-    const dateStr = r.timestamp.slice(0, 10);
+    const parsedTimestamp = parseStoredTimestamp(r.timestamp);
+    if (!parsedTimestamp) continue;
+    const dateStr = localDateStr(parsedTimestamp);
     for (const z of zones) {
       const id = z.id ?? z.zoneId;
       if (!id) continue;
