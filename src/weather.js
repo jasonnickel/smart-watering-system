@@ -15,6 +15,16 @@ import { minutesSinceTimestamp } from './time.js';
 
 const PRECIP_DISCREPANCY_THRESHOLD = CONFIG.weatherValidation.precipDiscrepancyThreshold ?? 0.15;
 
+function parseCachedJson(row, label) {
+  if (!row?.data_json) return null;
+  try {
+    return JSON.parse(row.data_json);
+  } catch (err) {
+    log(0, `${label} cache is corrupted: ${err.message}`);
+    return null;
+  }
+}
+
 /**
  * Get current weather with degraded-mode fallback and quality alerts.
  * Priority: Ambient Weather station -> cached Ambient -> OpenMeteo -> defaults
@@ -38,8 +48,12 @@ export async function resolveCurrentWeather() {
   if (cached) {
     const ageMinutes = minutesSinceTimestamp(cached.fetched_at);
     if (Number.isFinite(ageMinutes) && ageMinutes < CONFIG.degradedMode.ambientStaleThresholdMinutes) {
-      log(1, `Using cached Ambient data (${Math.round(ageMinutes)} min old)`);
-      return { data: JSON.parse(cached.data_json), source: 'ambient-cached', stale: false };
+      const cachedData = parseCachedJson(cached, 'Ambient');
+      if (cachedData) {
+        log(1, `Using cached Ambient data (${Math.round(ageMinutes)} min old)`);
+        return { data: cachedData, source: 'ambient-cached', stale: false };
+      }
+      log(1, 'Ignoring unreadable Ambient cache entry');
     }
 
     // [1.3] Weather data quality alert - station is stale
@@ -94,7 +108,10 @@ export async function resolveYesterdayWeather(dateStr) {
   const cacheKey = `openmeteo_yesterday_${dateStr}`;
   const cached = getCachedWeather(cacheKey);
   if (cached) {
-    return JSON.parse(cached.data_json);
+    const cachedData = parseCachedJson(cached, `OpenMeteo yesterday ${dateStr}`);
+    if (cachedData) {
+      return cachedData;
+    }
   }
 
   let openmeteoData = null;
@@ -111,8 +128,8 @@ export async function resolveYesterdayWeather(dateStr) {
 
   // [1.2] Cross-validate precipitation against Ambient Weather's daily total
   const ambientCache = getCachedWeather('ambient');
-  if (ambientCache && openmeteoData) {
-    const ambientData = JSON.parse(ambientCache.data_json);
+  const ambientData = parseCachedJson(ambientCache, 'Ambient');
+  if (ambientData && openmeteoData) {
     const ambientRain = ambientData.rainLast24h ?? 0;
     const openmeteoRain = openmeteoData.precipitation_sum ?? 0;
 
@@ -146,7 +163,11 @@ export async function resolveForecast() {
   if (cached) {
     const ageMinutes = minutesSinceTimestamp(cached.fetched_at);
     if (Number.isFinite(ageMinutes) && ageMinutes < CONFIG.api.openMeteo.cacheMinutes) {
-      return JSON.parse(cached.data_json);
+      const cachedData = parseCachedJson(cached, 'OpenMeteo forecast');
+      if (cachedData) {
+        return cachedData;
+      }
+      log(1, 'Ignoring unreadable OpenMeteo forecast cache entry');
     }
   }
 
@@ -156,7 +177,7 @@ export async function resolveForecast() {
     return data;
   } catch (err) {
     log(1, `Forecast unavailable: ${err.message}`);
-    return cached ? JSON.parse(cached.data_json) : null;
+    return parseCachedJson(cached, 'OpenMeteo forecast');
   }
 }
 

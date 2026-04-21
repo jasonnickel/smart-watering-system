@@ -16,6 +16,15 @@ import { TAPROOT_STATUS_PAGE_PATH } from './paths.js';
 const OUTPUT_PATH = process.env.STATUS_PAGE_PATH
   || TAPROOT_STATUS_PAGE_PATH;
 
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 /**
  * Generate and write the status page HTML.
  */
@@ -54,7 +63,7 @@ export function generateStatusPage() {
       if (forecast?.length > 0) {
         forecastHtml = forecast.map(d =>
           `<div class="card" style="flex:1;min-width:120px;">
-            <div style="font-size:12px;color:#666;">${d.date}</div>
+            <div style="font-size:12px;color:#666;">${escapeHtml(d.date)}</div>
             <div style="font-size:18px;font-weight:bold;">${d.tmax?.toFixed(0) ?? '?'}F</div>
             <div style="font-size:12px;">Low ${d.tmin?.toFixed(0) ?? '?'}F</div>
             ${d.precipitation > 0 ? `<div style="color:#1565c0;">${d.precipitation.toFixed(2)}" rain</div>` : ''}
@@ -72,7 +81,7 @@ export function generateStatusPage() {
       const color = pct < 40 ? '#e53935' : pct < 60 ? '#f5a623' : '#4caf50';
       return `<div style="margin:6px 0;">
         <div style="display:flex;justify-content:space-between;font-size:13px;">
-          <span>Zone ${z.zone_number} (${z.zone_name})</span>
+          <span>Zone ${z.zone_number} (${escapeHtml(z.zone_name)})</span>
           <span>${pct}%</span>
         </div>
         <div style="background:#e0e0e0;border-radius:4px;height:12px;">
@@ -86,7 +95,7 @@ export function generateStatusPage() {
       ? recentRuns.map(r => {
           const icon = r.decision === 'WATER' ? '&#128167;' : '&#9940;';
           return `<div style="padding:4px 0;border-bottom:1px solid #eee;font-size:13px;">
-            ${icon} <strong>${r.decision}</strong> - ${r.reason}
+            ${icon} <strong>${escapeHtml(r.decision)}</strong> - ${escapeHtml(r.reason)}
             <span style="color:#999;float:right;">${r.timestamp.slice(11, 16)}</span>
           </div>`;
         }).join('')
@@ -96,7 +105,7 @@ export function generateStatusPage() {
       ? `<div class="card">
         <h2>Advisor Insights</h2>
         ${advisorInsights.map(insight => `<div style="padding:6px 0;border-bottom:1px solid #eee;font-size:13px;">
-          ${formatAdvisorInsight(insight)}
+          ${escapeHtml(formatAdvisorInsight(insight))}
         </div>`).join('')}
       </div>`
       : '';
@@ -125,7 +134,7 @@ export function generateStatusPage() {
 
     <div class="card">
       <h2>Weather Source</h2>
-      <div style="color:${weatherColor};font-weight:bold;">${weatherSource}</div>
+      <div style="color:${weatherColor};font-weight:bold;">${escapeHtml(weatherSource)}</div>
       ${discrepancies.length > 0 ? `<div style="color:#e65100;font-size:12px;margin-top:4px;">&#9888; ${discrepancies.length} discrepancy warning(s) in last 24h</div>` : ''}
     </div>
 

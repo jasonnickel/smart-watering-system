@@ -140,10 +140,10 @@ export async function startMultiZoneRun(zones) {
   if (!zones || zones.length === 0) return true;
 
   const payload = {
-    zones: zones.map(z => ({
+    zones: zones.map((z, index) => ({
       id: z.id,
       duration: z.duration * 60, // Rachio expects seconds
-      sortOrder: z.priority,
+      sortOrder: index,
     })),
   };
 

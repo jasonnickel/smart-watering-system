@@ -18,24 +18,36 @@ const FETCH_TIMEOUT_MS = 15000;
  */
 export async function fetchWithRetry(url, options = {}, label = 'API') {
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    let timeout;
     try {
       log(2, `${label} fetch attempt ${attempt}/${MAX_RETRIES}`);
 
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+      timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
       const response = await fetch(url, {
         ...options,
         signal: controller.signal,
       });
 
-      clearTimeout(timeout);
-
       if (!response.ok) {
         throw new Error(`${label}: HTTP ${response.status} ${response.statusText}`);
       }
 
-      return await response.json();
+      if (response.status === 204) {
+        return null;
+      }
+
+      const text = await response.text();
+      if (!text.trim()) {
+        return null;
+      }
+
+      try {
+        return JSON.parse(text);
+      } catch (err) {
+        throw new Error(`${label}: Invalid JSON response (${err.message})`);
+      }
     } catch (err) {
       log(1, `${label} error (attempt ${attempt}): ${err.message}`);
 
@@ -43,6 +55,8 @@ export async function fetchWithRetry(url, options = {}, label = 'API') {
 
       const delay = BASE_DELAY_MS * Math.pow(2, attempt - 1);
       await new Promise(resolve => setTimeout(resolve, delay));
+    } finally {
+      clearTimeout(timeout);
     }
   }
 }

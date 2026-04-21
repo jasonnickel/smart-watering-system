@@ -5,7 +5,7 @@
 import { log } from '../log.js';
 import {
   getFlowCalibrationSuggestions, logTuningSuggestion,
-  getSystemState, setSystemState, getRunsSince, getSoilMoisture,
+  getSystemState, setSystemState, getRunsSince, getSoilMoistureRows,
 } from '../db/state.js';
 
 // Correction factor bounds - never adjust more than 20% from configured values
@@ -109,7 +109,7 @@ function analyzeWateringFrequency(profiles) {
   }
 
   // Current moisture state for context
-  const moisture = getSoilMoisture();
+  const moisture = getSoilMoistureRows();
   const moistureMap = {};
   for (const m of moisture) {
     moistureMap[m.zone_id] = m;
