@@ -173,6 +173,14 @@ export function chartsPageContent() {
     </div>
 
     <script src="/chart.umd.min.js"></script>
+    <script src="/charts-page.js?v=20260422" defer></script>
+  `;
+}
+
+/*
+Legacy inline block below kept only for reference; removed at runtime.
+The functional copy now lives at src/public/charts-page.js (CSP requires external).
+Original inline:
     <script>
       const colors = {
         blue: 'rgba(11, 95, 255, 0.7)',
@@ -479,5 +487,4 @@ export function chartsPageContent() {
         })
         .catch(err => console.error('Chart data load failed:', err));
     </script>
-  `;
-}
+*/

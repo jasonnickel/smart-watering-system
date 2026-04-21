@@ -57,6 +57,7 @@ const PUBLIC_PATHS = new Set([
   '/ai.js',
   '/satellite.js',
   '/chart.umd.min.js',
+  '/charts-page.js',
 ]);
 
 // -- HTTP helpers ------------------------------------------------------------
