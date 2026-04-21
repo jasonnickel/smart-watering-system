@@ -103,10 +103,10 @@ export function layout(title, content, activeTab, options = {}) {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>${escapeHtml(title)} - Taproot</title>
-  <link rel="stylesheet" href="/styles.css?v=20260324">
+  <link rel="stylesheet" href="/styles.css?v=20260422">
   <script src="/theme.js"></script>
   <script src="/ai.js" defer></script>
-  <script src="/satellite.js?v=20260324" defer></script>
+  <script src="/satellite.js?v=20260422" defer></script>
   <link rel="manifest" href="/manifest.json">
   <link rel="icon" href="/icon-192.svg" type="image/svg+xml">
   <meta name="theme-color" content="#0b5fff">
@@ -121,8 +121,15 @@ export function layout(title, content, activeTab, options = {}) {
     <div class="header-inner">
       <div class="header-spacer" aria-hidden="true"></div>
       <a class="header-title" href="/" aria-label="Go to dashboard">
-        <h1>Taproot</h1>
-        <p>Smart Irrigation System</p>
+        <span class="header-logo" aria-hidden="true">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="20" height="20">
+            <path fill="currentColor" d="M12 2.5c-.6 0-1.14.32-1.44.83C8.9 6 5 12.07 5 15.5a7 7 0 0 0 14 0c0-3.43-3.9-9.5-5.56-12.17A1.67 1.67 0 0 0 12 2.5zm0 3.04c1.77 2.94 5 8.37 5 9.96a5 5 0 0 1-10 0c0-1.59 3.23-7.02 5-9.96z"/>
+          </svg>
+        </span>
+        <span class="header-text">
+          <h1>Taproot</h1>
+          <p>Smart Irrigation System</p>
+        </span>
       </a>
       ${headerActionsHtml}
     </div>

@@ -1,14 +1,16 @@
 # Taproot
 
-Smart Irrigation System
+Smart Irrigation System.
 
-Standalone controller that takes over scheduling for a Rachio sprinkler system. Uses your weather station, USDA soil survey, satellite vegetation imagery, reference ET cross-validation, multi-day forecasting, and AI-powered insights to make watering decisions that Rachio's cloud cannot.
+Standalone controller that takes over scheduling for a Rachio sprinkler system. Uses your weather station, USDA soil survey, satellite vegetation imagery, reference ET cross-validation, multi-day forecasting, your utility meter portal, historical billing data, and AI-powered insights to make watering decisions that Rachio's cloud cannot — including enforcing local drought restrictions.
 
-Fully deterministic decision engine. AI layer is advisory only - it never changes watering decisions.
+Fully deterministic decision engine. AI layer is advisory only — it never changes watering decisions.
 
-## Data Sources
+![Charts dashboard in dark mode](docs/screenshots/charts-dark.png)
 
-Six external sources, cross-validated against each other, stored in SQLite for 2-year historical analysis:
+## Data sources
+
+Seven external sources, cross-validated against each other, stored in SQLite for 2-year historical analysis:
 
 | Source | Data | Auth | Frequency |
 | ------ | ---- | ---- | --------- |
@@ -16,7 +18,8 @@ Six external sources, cross-validated against each other, stored in SQLite for 2
 | **OpenMeteo** | 7-day forecast + 2-year daily archive (temp, rain, solar, wind, FAO-56 reference ET) | None | Daily + backfill |
 | **USDA Soil Data Access** | Soil type, available water capacity, pH, organic matter, infiltration rate | None | Once (cached) |
 | **CoAgMet** | Reference evapotranspiration from nearest Colorado ag weather station | None | Daily + 2-year backfill |
-| **Sentinel-2 Satellite** | 10-meter NDVI vegetation health imagery and statistics | Free Copernicus account | Every 5 days |
+| **Sentinel-2 Satellite** | 10-meter NDVI vegetation health imagery | Copernicus account | Every 5 days |
+| **AquaHawk (UtilityHawk)** | Hourly meter readings, bills, rainfall/temperature at the meter | Session cookie | Daily + 2-year backfill |
 | **Rachio API** | Zone control, run verification, device status | API key | Every run |
 
 ## Architecture
@@ -25,78 +28,68 @@ Six external sources, cross-validated against each other, stored in SQLite for 2
 flowchart TB
     subgraph DATA["Data Sources"]
         WX["Ambient Weather\nLive Station"]
-        OM["OpenMeteo\nForecast + 2yr Archive"]
-        USDA["USDA Soil Survey\nAWC, pH, Texture"]
+        OM["OpenMeteo\nForecast + Archive"]
+        USDA["USDA Soil Survey"]
         COAG["CoAgMet\nReference ET"]
-        SAT["Sentinel-2\nNDVI Satellite"]
+        SAT["Sentinel-2\nNDVI"]
+        AQUA["AquaHawk\nMeter + Bills"]
     end
 
     subgraph ENGINE["Decision Engine"]
-        DECIDE{"5-Stage Pipeline\nSafety - Forecast\nMoisture - Budget\nScheduling"}
-        RAIN{"Live Rain\nCheck"}
+        RESTRICT["Stage 0\nDrought Restrictions"]
+        DECIDE["Stages 1-5\nSafety / Forecast\nMoisture / Budget\nScheduling"]
+        RAIN{Live Rain\nCheck}
     end
 
-    subgraph LEARN["Learning Loop"]
+    subgraph LEARN["Learning / Audit Loop"]
         TUNE["Adaptive Tuning\n14-day Analysis"]
-        ETVAL["ET Cross-Validation\nvs CoAgMet Reference"]
-        NDVI["NDVI Trend\nVegetation Health"]
+        ETVAL["ET Cross-Validation"]
+        NDVI["NDVI Trend"]
+        ANOM["AquaHawk Anomaly\nDetection"]
     end
 
     WX --> DECIDE
     OM --> DECIDE
-    USDA -.->|soil properties| DECIDE
-    DB[("SQLite\n18 Tables\n2yr History")] --> DECIDE
+    USDA -.-> DECIDE
+    DB[("SQLite\n21 Tables\n2yr History")] --> DECIDE
 
+    RESTRICT -->|"Blocked\n(hours / days-per-week)"| LOG["Log SKIP\nwith reason"]
+    RESTRICT -->|Allowed| DECIDE
     DECIDE -->|WATER| RAIN
-    DECIDE -->|SKIP| LOG["Log\nSkip Reason"]
+    DECIDE -->|SKIP| LOG
 
-    RAIN -->|Clear| RACHIO["Rachio\nWater Zones"]
-    RAIN -->|Raining| ABORT["Abort"]
+    RAIN -->|Clear| RACHIO[Rachio\nWater Zones]
+    RAIN -->|Raining| ABORT[Abort]
 
-    RACHIO --> VERIFY["Verify"] --> DB
+    RACHIO --> VERIFY[Verify] --> DB
 
     DECIDE --> TUNE --> DB
     COAG --> ETVAL --> DB
     SAT --> NDVI --> DB
+    AQUA --> ANOM --> DB
     TUNE -.->|correction factors| DECIDE
 
-    TIMER(["Hourly Timer"]) -.-> DECIDE
-    AI["Kimi K2 Thinking\nChat + Briefing + Alerts"] -.-> DB
-
-    style DECIDE fill:#e65100,stroke:#bf360c,color:#fff
-    style RAIN fill:#1565c0,stroke:#0d47a1,color:#fff
-    style RACHIO fill:#2e7d32,stroke:#1b5e20,color:#fff
-    style VERIFY fill:#2e7d32,stroke:#1b5e20,color:#fff
-    style LOG fill:#c62828,stroke:#b71c1c,color:#fff
-    style ABORT fill:#c62828,stroke:#b71c1c,color:#fff
-    style WX fill:#1565c0,stroke:#0d47a1,color:#fff
-    style OM fill:#1565c0,stroke:#0d47a1,color:#fff
-    style USDA fill:#00695c,stroke:#004d40,color:#fff
-    style COAG fill:#00695c,stroke:#004d40,color:#fff
-    style SAT fill:#00695c,stroke:#004d40,color:#fff
-    style DB fill:#1565c0,stroke:#0d47a1,color:#fff
-    style TUNE fill:#f57f17,stroke:#e65100,color:#fff
-    style ETVAL fill:#f57f17,stroke:#e65100,color:#fff
-    style NDVI fill:#f57f17,stroke:#e65100,color:#fff
-    style TIMER fill:#6a1b9a,stroke:#4a148c,color:#fff
-    style AI fill:#6a1b9a,stroke:#4a148c,color:#fff
+    TIMER(["Hourly Timer"]) -.-> RESTRICT
+    AI["Kimi K2 Thinking\nAdvisory only"] -.-> DB
 ```
 
-## Decision Pipeline
+## Decision pipeline
 
-Every hour, 5-stage pipeline:
+Every hour, 6-stage deterministic pipeline:
 
-1. **Safety** - Skip on high wind, recent rain, or sub-freezing temps
-2. **Forecast** - Skip if forecast rainfall exceeds threshold
-3. **Soil moisture** - Per-zone water deficit via ET modeling from archived, forecast, and live weather
-4. **Budget** - Daily gallon and cost limits from your utility's tiered rates
-5. **Scheduling** - Optimized run with soak cycles for clay soil infiltration
+1. **Drought restrictions** — Enforces local utility rules (allowed hours, days-per-week per zone, exempt zone types). Always wins over everything below.
+2. **Safety** — Skip on high wind, recent rain, or sub-freezing temps.
+3. **Forecast** — Skip if forecast rainfall exceeds threshold.
+4. **Soil moisture** — Per-zone water deficit via ET modeling from archived, forecast, and live weather.
+5. **Budget** — Daily gallon and cost caps from your utility's tiered rates. If total demand exceeds the cap, waters the most-urgent zones that fit (partial run) rather than skipping everything.
+6. **Scheduling** — Optimized run with soak cycles for clay soil infiltration.
 
 Post-decision integrations run automatically:
 
 - **ET cross-validation** against CoAgMet reference measurements
 - **NDVI refresh** from Sentinel-2 if last reading > 5 days old
 - **Adaptive tuning** with 14-day rolling analysis and auto-correction
+- **AquaHawk anomaly detection** — 10x trailing-median flow flagged at ERROR level (catches leaks and stuck zones within 24 hours)
 
 Final live rain check before any command is sent. Verify step confirms Rachio accepted.
 
@@ -109,26 +102,39 @@ Final live rain check before any command is sent. Verify step confirms Rachio ac
 | **Local weather station** | Yes | No | No | No |
 | **Weather cross-validation** | Yes | No | No | No |
 | **Real-time rain abort** | Yes | No | No | No |
-| **AI insights** | Yes (Kimi K2) | No | No | No |
-| **Natural language chat** | Yes | No | No | No |
+| **Drought-restriction enforcement** | Yes (per-zone, per-hour) | No | No | No |
+| **Utility meter ground truth** | Yes (AquaHawk) | No | No | No |
+| **Bill reconciliation** | Yes | No | No | No |
+| **Anomaly / leak detection** | Yes (10x median) | No | No | No |
+| **Predicted vs actual auditing** | Yes | No | No | No |
 | **Satellite vegetation health** | Yes (Sentinel-2) | No | No | No |
 | **USDA soil integration** | Yes | No | No | No |
 | **Reference ET validation** | Yes (CoAgMet) | No | No | No |
-| **Adaptive zone tuning** | Yes | No | No | No |
+| **AI insights** | Yes (Kimi K2) | No | No | No |
+| **Natural language chat** | Yes | No | No | No |
+| **Adaptive zone tuning** | Yes | Yes | No | No |
 | **ET method** | Hargreaves + CoAgMet | FAO-56 PyETo | Penman-Monteith | ETo % scaling |
 | **Per-zone moisture budget** | Yes | Yes | No | No |
 | **Smart soak cycles** | Yes | No | No | No |
-| **Utility rate tracking** | Yes (YAML) | No | No | No |
+| **Utility rate tracking** | Yes (YAML + historical regimes) | No | No | No |
 | **2-year historical data** | Yes | No | No | No |
 | **MQTT / Home Assistant** | Optional | Native | Native | No |
 
 ## Features
 
-**Shadow mode.** Run for a week before going live. All decisions are logged without actuating Rachio.
+**Shadow mode.** Run for a week before going live. All decisions are logged without actuating Rachio. When you're confident, `taproot go-live` flips the switch.
+
+**Drought-stage enforcement.** Configurable `restrictions.yaml` enforces allowed watering windows, max days per week per zone, exempt zone types (drip), and address-specific day-of-week assignments. Ships with a Golden Colorado Stage 1 template. Restrictions always win over scheduling.
+
+**AquaHawk meter integration.** Pulls hourly meter readings from any municipal utility running the AquaHawk / UtilityHawk portal. 2-year backfill lands ~17,500 hourly + 730 daily + 24 monthly rows. Gives you real billed-usage numbers alongside Taproot's modeled numbers.
+
+**Bill reconciliation.** Parses utility bills, extracts usage + tier breakdowns + fees, tracks rate-regime changes over time. Detects when modeled cost diverges from actual billed cost.
+
+**Anomaly detection.** Daily scan of AquaHawk data flags any single day over 10x the trailing 30-day median as a possible leak or stuck zone. Logs at ERROR level so notifications fire. Retroactively validated against real incidents.
 
 **Decision-Command-Verify.** Three-phase logging per run. State is never corrupted by failed commands. Watchdog catches silent failures.
 
-**Ask Your Yard.** Natural language chat powered by Kimi K2 Thinking. Answers grounded in live data, 2-year weather archive, reference ET, and satellite vegetation readings.
+**Ask Your Yard.** Natural language chat powered by Kimi K2 Thinking. Answers grounded in live data, 2-year weather archive, reference ET, satellite vegetation, AquaHawk meter readings, and bill history.
 
 **Decision storytelling.** Explain button on each Run History row generates a cached plain-English narrative.
 
@@ -136,19 +142,19 @@ Final live rain check before any command is sent. Verify step confirms Rachio ac
 
 **Reference ET cross-validation.** Daily comparison of Hargreaves ET vs CoAgMet ASCE Penman-Monteith. Persistent 15%+ deviation triggers advisor insight and auto-correction via adaptive tuning. 2-year backfill for trend analysis.
 
-**USDA soil integration.** Surveyed soil properties from USDA Soil Data Access API - AWC, infiltration rate, pH, organic matter, profile depth. Flags mismatches against configured values.
+**Predicted vs Actual Usage chart.** Overlays Taproot-modeled gallons with AquaHawk meter ground truth per day. The audit view that reveals model drift.
 
-**Weekly intelligence briefing.** Sunday morning report with 7/14/30/90-day, seasonal, and year-over-year trends. ET accuracy score, NDVI trends, advisor insights. Kimi K2 generates structured narrative with recommendations.
+**USDA soil integration.** Surveyed soil properties from USDA Soil Data Access API — AWC, infiltration rate, pH, organic matter, profile depth. Flags mismatches against configured values.
 
-**Advisor insights.** Deterministic analysis combining all data sources: forecast confidence, rain gauge bias, ET model drift, soil config mismatches, NDVI vegetation trends, flow calibration alerts.
+**Weekly intelligence briefing.** Sunday morning report with 7/14/30/90-day, seasonal, and year-over-year trends. ET accuracy score, NDVI trends, advisor insights, bill reconciliation. Kimi K2 generates structured narrative with recommendations.
 
-**Adaptive zone tuning.** 14-day rolling analysis of actual vs predicted watering frequency. Auto-applies ET correction factors (0.8x-1.2x bounds) after 3 consecutive same-direction suggestions. Cross-validated against CoAgMet reference ET.
+**Advisor insights.** Deterministic analysis combining all data sources: forecast confidence, rain gauge bias, ET model drift, soil config mismatches, NDVI vegetation trends, flow calibration alerts, usage anomalies.
 
-**Configurable water rates.** Tiered rate schedule in `rates.yaml`. AWC-based tiers, monthly fixed charges, multi-tier volume pricing.
+**Adaptive zone tuning.** 14-day rolling analysis of actual vs predicted watering frequency. Auto-applies ET correction factors (0.8x-1.2x bounds) after 3 consecutive same-direction suggestions.
 
 **Home Assistant.** MQTT auto-discovery for per-zone moisture, weather data, cost, and decision state.
 
-**Security.** CSRF tokens, 64KB body limits, login rate limiting, CSP headers, path traversal protection, timing-safe password comparison.
+**Security.** CSRF tokens, 64KB body limits, login rate limiting, strict CSP (`script-src 'self'`), path traversal protection, timing-safe password comparison.
 
 ## Limitations
 
@@ -156,28 +162,56 @@ Final live rain check before any command is sent. Verify step confirms Rachio ac
 - Notifications via webhook (n8n); no built-in SMTP
 - Sentinel-2 requires free Copernicus Data Space account
 - CoAgMet is Colorado-specific; other states need alternative reference ET source
+- AquaHawk / UtilityHawk is municipal; not all utilities offer it
 - 112 tests cover core logic but are not a substitute for hardware smoke testing
 
 ## Setup
+
+### Local (dev + testing)
 
 ```bash
 git clone https://github.com/jasonnickel/smart-watering-system.git ~/taproot
 cd ~/taproot
 npm install --production
 
-node src/cli.js setup      # Configure API keys and zones
+node src/cli.js setup      # Configure API keys, zones, location
 node src/cli.js doctor     # Verify connectivity
-node src/cli.js web        # Temporary web UI
-node src/cli.js service install-web  # Keep the dashboard available at a stable bookmark URL
-node src/cli.js run --shadow  # Test in shadow mode
-
-bash deploy/install.sh     # Install systemd timers
-node src/cli.js go-live    # Switch to live mode after validation
+node src/cli.js web        # Start the dashboard locally
+node src/cli.js run --shadow  # Test a decision cycle
 ```
 
-Taproot stores its runtime state in `~/.taproot`. If it finds an older `~/.smart-water` install, it automatically imports the legacy env, database, and supporting files on startup when the Taproot copies are missing.
+### Homelab (production)
 
-### AI Features
+Taproot runs well as an unprivileged Proxmox LXC container or any Linux box with Node 20+. Systemd units are in [deploy/](deploy/):
+
+```bash
+# On the target host:
+git clone https://github.com/jasonnickel/smart-watering-system.git /opt/smart-water
+cd /opt/smart-water && npm install --production
+
+# Copy systemd units, patch paths if needed, enable:
+cp deploy/taproot*.service deploy/taproot*.timer /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable --now taproot.timer taproot-summary.timer taproot-watchdog.timer taproot-briefing.timer taproot-web.service
+```
+
+Taproot stores its runtime state in `~/.taproot/`. If it finds an older `~/.smart-water` install, it automatically imports the legacy env, database, and supporting files on startup when the Taproot copies are missing.
+
+### Historical backfill
+
+Once API credentials are configured, pull the 2-year archive:
+
+```bash
+node src/cli.js backfill-utility --days 730   # AquaHawk meter + bills + rate history
+# Weather history + reference ET:
+node -e "
+  import('./src/db/state.js').then(({initDB})=>initDB(process.env.HOME+'/.taproot/taproot.db'));
+  import('./src/api/openmeteo.js').then(m=>m.backfillWeatherHistory({years:2}));
+  import('./src/api/coagmet.js').then(m=>m.backfillReferenceET({years:2}));
+"
+```
+
+### AI features
 
 ```bash
 echo 'AI_API_KEY=sk-your-key-here' >> ~/.taproot/.env
@@ -187,18 +221,46 @@ echo 'AI_MODEL=kimi-k2-thinking' >> ~/.taproot/.env
 
 Enables chat, decision narratives, AI-enriched alerts, weekly briefing, and daily summary narratives. ~$0.30/year at typical usage.
 
-### Satellite Imagery
+### Satellite imagery
 
 ```bash
 echo 'COPERNICUS_EMAIL=your-email@example.com' >> ~/.taproot/.env
 echo 'COPERNICUS_PASSWORD=your-password' >> ~/.taproot/.env
 ```
 
-### Historical Backfill
+### AquaHawk meter portal
 
 ```bash
-node backfill.js  # 730 days of weather + reference ET + USDA soil survey (~30 seconds)
+echo 'AQUAHAWK_DISTRICT=goco' >> ~/.taproot/.env        # subdomain before .aquahawk.us
+echo 'AQUAHAWK_USERNAME=you@example.com' >> ~/.taproot/.env
+echo 'AQUAHAWK_PASSWORD=your-password' >> ~/.taproot/.env
+echo 'AQUAHAWK_ACCOUNT_NUMBER=00-000000-000' >> ~/.taproot/.env
 ```
+
+Then run `node src/cli.js backfill-utility --days 730` to seed two years of meter readings.
+
+### Drought restrictions
+
+Copy the shipped template and enable:
+
+```bash
+cp restrictions.yaml ~/.taproot/restrictions.yaml
+```
+
+Edit `~/.taproot/restrictions.yaml`:
+
+```yaml
+enabled: true
+stage: 1
+max_days_per_week: 2
+allowed_hours:
+  - start: 18      # 6pm
+    end: 10        # 10am (next day)
+exempt_zone_types: [drip]
+effective_from: '2026-05-01'
+```
+
+Restart or wait for next hourly cycle — restrictions apply immediately.
 
 ## API
 
@@ -206,8 +268,8 @@ node backfill.js  # 730 days of weather + reference ET + USDA soil survey (~30 s
 
 | Endpoint | Description |
 | -------- | ----------- |
-| `/api/status` | Current system status |
-| `/api/charts` | Moisture history |
+| `/api/status` | Current system status (includes `meterUsage` summary when AquaHawk is configured) |
+| `/api/charts?days=N` | Moisture, daily usage (AquaHawk), decisions, precip audits, weather history, reference ET, bills |
 | `/api/soil?lat=&lon=` | USDA soil survey |
 | `/api/reference-et` | Yesterday's CoAgMet reference ET |
 | `/api/ndvi` | NDVI vegetation statistics |
@@ -225,14 +287,14 @@ node backfill.js  # 730 days of weather + reference ET + USDA soil survey (~30 s
 | `/api/ai/chat` | Natural language query |
 | `/api/ai/narrative` | Decision explanation |
 | `/api/ai/briefing` | Weekly intelligence briefing |
-| `/api/backfill/weather` | Backfill weather data |
-| `/api/backfill/reference-et` | Backfill reference ET |
+| `/api/backfill/weather` | Backfill OpenMeteo weather data |
+| `/api/backfill/reference-et` | Backfill CoAgMet reference ET |
 
 ## CLI
 
 ```bash
 node src/cli.js setup                           # Configure API keys and zones
-node src/cli.js doctor                          # System health check
+node src/cli.js doctor                          # System health check (verifies AquaHawk, Rachio, Ambient, OpenMeteo)
 node src/cli.js go-live                         # Shadow to live mode
 node src/cli.js shadow                          # Force shadow mode
 node src/cli.js smoke-test --zone 1 --minutes 1 # Live commissioning test
@@ -241,25 +303,29 @@ node src/cli.js run --shadow                    # Shadow mode run
 node src/cli.js water                           # Manual watering
 node src/cli.js status                          # Current state
 node src/cli.js status --json                   # Machine-readable status
-node src/cli.js web                             # Start web UI
-node src/cli.js service install-web             # Install or refresh startup service for dashboard
-node src/cli.js service status-web              # Show startup service status
 node src/cli.js cleanup                         # Remove data > 90 days
+node src/cli.js web                             # Start the dashboard web UI
+node src/cli.js service install-web             # Install launchd/systemd unit for the web UI
+node src/cli.js service status-web              # Show web startup service status
+node src/cli.js backfill-utility [--days N] [--intervals I,I]
+                                                # Pull historical AquaHawk meter readings
 ```
 
 ## Configuration
 
 | File | Purpose |
 | ---- | ------- |
-| `zones.yaml` | Zone profiles - type, sun exposure, area, priority, soil profile |
-| `rates.yaml` | Utility rate schedule - tiers, fixed charges, AWC threshold |
-| `~/.taproot/.env` | API keys, location, dashboard URL, startup service, MQTT, notifications, AI config |
-| `.env.example` | All available environment variables |
+| `zones.yaml` | Zone profiles — type, sun exposure, area, priority, soil profile |
+| `rates.yaml` | Utility rate schedule — tiers, fixed charges, AWC threshold |
+| `restrictions.yaml` | Drought / conservation rules — allowed hours, days per week, exempt types |
+| `~/.taproot/.env` | API keys, location, dashboard URL, startup service, MQTT, notifications, AI config, AquaHawk creds |
+| `~/.taproot/restrictions.yaml` | Per-user override of `restrictions.yaml` |
+| `.env.example` | All available environment variables with inline docs |
 
 ## Development
 
 ```bash
-npm test       # 112 tests (Node.js built-in runner)
+npm test       # Node.js built-in test runner
 npm run lint   # ESLint flat config
 npm run check  # Lint + tests
 ```
@@ -269,8 +335,8 @@ npm run check  # Lint + tests
 - Node.js 20+
 - Rachio controller with API access
 - Ambient Weather station (recommended)
-- systemd for scheduling
-- Optional: MQTT broker (Home Assistant), Kimi API key (~$0.30/yr), Copernicus account (satellite)
+- systemd or launchd for scheduling
+- Optional: MQTT broker (Home Assistant), Kimi API key (~$0.30/yr), Copernicus account (satellite), AquaHawk municipal portal
 
 ## Community
 

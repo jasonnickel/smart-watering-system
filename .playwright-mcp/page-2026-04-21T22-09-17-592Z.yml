@@ -1,0 +1,106 @@
+- generic [active] [ref=e1]:
+  - link "Skip to main content" [ref=e2] [cursor=pointer]:
+    - /url: "#main"
+  - banner [ref=e3]:
+    - generic [ref=e4]:
+      - link "Go to dashboard" [ref=e5] [cursor=pointer]:
+        - /url: /
+        - heading "Taproot" [level=1] [ref=e6]
+        - paragraph [ref=e7]: Smart Irrigation System
+      - button "Switch to light mode" [ref=e9] [cursor=pointer]: ☀
+  - navigation "Primary" [ref=e10]:
+    - link "Dashboard" [ref=e11] [cursor=pointer]:
+      - /url: /
+    - link "History" [ref=e12] [cursor=pointer]:
+      - /url: /logs
+    - link "Zones" [ref=e13] [cursor=pointer]:
+      - /url: /zones
+    - link "Charts" [ref=e14] [cursor=pointer]:
+      - /url: /charts
+    - link "Settings" [ref=e15] [cursor=pointer]:
+      - /url: /settings
+  - main [ref=e16]:
+    - generic [ref=e18]:
+      - heading "Water Usage (actual from meter)" [level=2] [ref=e19]
+      - generic [ref=e20]:
+        - generic [ref=e21]: Range
+        - combobox "Range" [ref=e22]:
+          - option "Last 7 days"
+          - option "Last 14 days" [selected]
+          - option "Last 30 days"
+          - option "Last 60 days"
+          - option "Last 90 days"
+    - generic [ref=e25]:
+      - heading "Daily Cost (computed from meter + current rates)" [level=2] [ref=e26]
+      - generic [ref=e27]:
+        - generic [ref=e28]: Range
+        - combobox "Range" [ref=e29]:
+          - option "Last 7 days"
+          - option "Last 14 days" [selected]
+          - option "Last 30 days"
+          - option "Last 60 days"
+          - option "Last 90 days"
+    - heading "Monthly Bills (as billed)" [level=2] [ref=e32]
+    - generic [ref=e35]:
+      - heading "Predicted vs Actual Usage" [level=2] [ref=e36]
+      - generic [ref=e37]:
+        - generic [ref=e38]: Range
+        - combobox "Range" [ref=e39]:
+          - option "Last 7 days"
+          - option "Last 14 days" [selected]
+          - option "Last 30 days"
+          - option "Last 60 days"
+          - option "Last 90 days"
+    - generic [ref=e42]:
+      - heading "Decisions" [level=2] [ref=e43]
+      - generic [ref=e44]:
+        - generic [ref=e45]: Range
+        - combobox "Range" [ref=e46]:
+          - option "Last 7 days"
+          - option "Last 14 days" [selected]
+          - option "Last 30 days"
+          - option "Last 60 days"
+          - option "Last 90 days"
+    - generic [ref=e49]:
+      - 'heading "Precipitation: Station vs Forecast" [level=2] [ref=e50]'
+      - generic [ref=e51]:
+        - generic [ref=e52]: Range
+        - combobox "Range" [ref=e53]:
+          - option "Last 7 days" [selected]
+          - option "Last 14 days"
+          - option "Last 30 days"
+          - option "Last 60 days"
+          - option "Last 90 days"
+    - generic [ref=e56]:
+      - heading "Historical Weather (temp + rain)" [level=2] [ref=e57]
+      - generic [ref=e58]:
+        - generic [ref=e59]: Range
+        - combobox "Range" [ref=e60]:
+          - option "Last 7 days"
+          - option "Last 14 days"
+          - option "Last 30 days" [selected]
+          - option "Last 60 days"
+          - option "Last 90 days"
+    - generic [ref=e63]:
+      - heading "Reference ET (CoAgMet)" [level=2] [ref=e64]
+      - generic [ref=e65]:
+        - generic [ref=e66]: Range
+        - combobox "Range" [ref=e67]:
+          - option "Last 7 days"
+          - option "Last 14 days"
+          - option "Last 30 days" [selected]
+          - option "Last 60 days"
+          - option "Last 90 days"
+    - heading "Current Soil Moisture" [level=2] [ref=e70]
+  - contentinfo "Footer navigation" [ref=e72]:
+    - navigation [ref=e73]:
+      - link "Dashboard" [ref=e74] [cursor=pointer]:
+        - /url: /
+      - link "History" [ref=e75] [cursor=pointer]:
+        - /url: /logs
+      - link "Zones" [ref=e76] [cursor=pointer]:
+        - /url: /zones
+      - link "Charts" [ref=e77] [cursor=pointer]:
+        - /url: /charts
+      - link "Settings" [ref=e78] [cursor=pointer]:
+        - /url: /settings
