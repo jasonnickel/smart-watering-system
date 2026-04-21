@@ -1,0 +1,14 @@
+[Unit]
+Description=Taproot - Auto Update Timer
+
+[Timer]
+# Wait until the box has been up for a minute before the first check
+OnBootSec=1min
+# Then poll every 2 minutes
+OnUnitActiveSec=2min
+# Keep going even if machine was off across scheduled time
+Persistent=true
+Unit=taproot-update.service
+
+[Install]
+WantedBy=timers.target
