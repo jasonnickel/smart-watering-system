@@ -71,6 +71,6 @@ export default [
     },
   },
   {
-    ignores: ['node_modules/**', 'src/public/sw.js', 'src/public/theme.js', 'src/public/ai.js', 'src/public/satellite.js'],
+    ignores: ['node_modules/**', 'src/public/sw.js', 'src/public/theme.js', 'src/public/ai.js', 'src/public/satellite.js', 'src/public/*.min.js'],
   },
 ];

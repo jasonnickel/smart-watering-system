@@ -546,6 +546,77 @@ export function getStatusJSON(dateStr) {
   };
 }
 
+// -- Utility usage history (for charts from AquaHawk ground truth) -----------
+
+/**
+ * Return daily actual water usage from utility_usage (AquaHawk meter readings).
+ * Groups hourly rows into days when daily rows aren't present. Prefers daily
+ * when available for accuracy.
+ *
+ * @param {number} days - rolling window size in days
+ * @returns {Array<{date: string, gallons: number, rainfall_in: number|null}>}
+ */
+export function getUtilityUsageDaily(days = 30) {
+  const db = getDB();
+  const since = new Date(Date.now() - days * 86400000).toISOString();
+  return db.prepare(`
+    SELECT substr(start_time, 1, 10) AS date,
+           SUM(gallons) AS gallons,
+           MAX(rainfall_in) AS rainfall_in
+    FROM utility_usage
+    WHERE interval = '1 day' AND start_time >= ?
+    GROUP BY date
+    ORDER BY date ASC
+  `).all(since);
+}
+
+/**
+ * Return monthly utility bills within range, including tier breakdowns.
+ */
+export function getUtilityBillsHistory(days = 730) {
+  const db = getDB();
+  const since = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
+  return db.prepare(`
+    SELECT bill_date, period_start, period_end, days, usage_kgal, total,
+           tier1_usage_kgal, tier1_rate, tier2_usage_kgal, tier2_rate,
+           water_service, water_base_fee, wastewater, drainage
+    FROM utility_bills
+    WHERE period_end >= ?
+    ORDER BY period_end ASC
+  `).all(since);
+}
+
+/**
+ * Return weather_history for a rolling window, coalesced to one row per date
+ * (preferring ambient source over openmeteo when both exist for the same day).
+ */
+export function getWeatherHistoryForCharts(days = 30) {
+  const db = getDB();
+  const since = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
+  return db.prepare(`
+    SELECT date, temp_max, temp_min, temp_avg, humidity,
+           precipitation, solar_radiation, wind_speed, source
+    FROM weather_history
+    WHERE date >= ?
+    ORDER BY date ASC, source = 'ambient' DESC
+  `).all(since);
+}
+
+/**
+ * Return reference_et history (CoAgMet Penman-Monteith).
+ */
+export function getReferenceETForCharts(days = 30) {
+  const db = getDB();
+  const since = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
+  return db.prepare(`
+    SELECT date, station, reference_eto, reference_etr,
+           temp_max, temp_min, precipitation
+    FROM reference_et
+    WHERE date >= ?
+    ORDER BY date ASC
+  `).all(since);
+}
+
 // -- Watering days by zone (for rolling-window restriction checks) ------------
 
 /**
