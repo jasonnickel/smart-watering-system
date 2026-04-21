@@ -413,8 +413,58 @@ export function getStatus(dateStr) {
   const moisture = getDB().prepare('SELECT * FROM soil_moisture ORDER BY zone_number').all();
   const finance = getFinanceData();
   const todayUsage = getDailyUsage(dateStr || localDateStr());
+  const meterUsage = getMeterUsageSummary();
 
-  return { lastRun, moisture, finance, todayUsage };
+  return { lastRun, moisture, finance, todayUsage, meterUsage };
+}
+
+/**
+ * Aggregate AquaHawk meter readings into Today / This month / Billing cycle
+ * buckets with tiered-rate cost estimates. Returns null fields when the
+ * utility_usage table has no rows (not configured or not backfilled yet).
+ *
+ * @param {number} [cycleStartDay=25] - day-of-month when billing cycle starts
+ */
+export function getMeterUsageSummary(cycleStartDay = 25) {
+  const db = getDB();
+  const totalRows = db.prepare('SELECT COUNT(*) AS n FROM utility_usage').get();
+  if (!totalRows || totalRows.n === 0) {
+    return { configured: false };
+  }
+
+  const now = new Date();
+  const todayStr = localDateStr(now);
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+  const day = now.getDate();
+  const cycleStart = day >= cycleStartDay
+    ? new Date(now.getFullYear(), now.getMonth(), cycleStartDay)
+    : new Date(now.getFullYear(), now.getMonth() - 1, cycleStartDay);
+  const cycleStartStr = cycleStart.toISOString().slice(0, 10);
+
+  const sumFor = (sinceDate) => {
+    const row = db.prepare(`
+      SELECT COALESCE(SUM(gallons), 0) AS gallons
+      FROM utility_usage
+      WHERE interval = '1 day' AND substr(start_time, 1, 10) >= ?
+    `).get(sinceDate);
+    return row?.gallons ?? 0;
+  };
+
+  const todayGallons = sumFor(todayStr);
+  const monthGallons = sumFor(monthStart);
+  const cycleGallons = sumFor(cycleStartStr);
+
+  const latest = db.prepare(`
+    SELECT MAX(start_time) AS ts FROM utility_usage WHERE interval = '1 day'
+  `).get();
+
+  return {
+    configured: true,
+    today: { gallons: todayGallons },
+    thisMonth: { gallons: monthGallons },
+    billingCycle: { gallons: cycleGallons, startDate: cycleStartStr },
+    latestReading: latest?.ts || null,
+  };
 }
 
 /**
@@ -542,6 +592,12 @@ export function getStatusJSON(dateStr) {
       monthlyGallons: status.finance.monthly_gallons,
       monthlyCost: status.finance.monthly_cost,
       cumulativeGallons: status.finance.cumulative_gallons,
+    } : null,
+    meterUsage: status.meterUsage?.configured ? {
+      today: status.meterUsage.today,
+      thisMonth: status.meterUsage.thisMonth,
+      billingCycle: status.meterUsage.billingCycle,
+      latestReading: status.meterUsage.latestReading,
     } : null,
   };
 }
