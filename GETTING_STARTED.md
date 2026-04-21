@@ -16,7 +16,7 @@ Your Rachio API key lets this system talk to your sprinkler controller. Here's h
 4. Click **Account Settings**
 5. Scroll down to the section labeled **API Access**
 6. Click **Get API Key**
-7. A long string of letters and numbers will appear (example: `46d88fc7-ac38-45a8-bfed-1caab7400a2d`)
+7. A long string of letters and numbers will appear (example format: `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`)
 8. Copy this entire string - you'll paste it during setup
 
 If you don't see an API Access section, your Rachio firmware may need an update. Open the Rachio phone app and check for updates under Device Settings.
@@ -34,8 +34,8 @@ If you have an Ambient Weather station in your yard, this system can read direct
 3. Click **My Account** from the dropdown
 4. On the account page, look for a tab or link labeled **API Keys**
 5. You should see two keys listed:
-   - **API Key** - a long string of letters and numbers (example: `e29f9738c3594f53...`)
-   - **Application Key** - another long string (example: `c22da4ee62c14aca...`)
+   - **API Key** - a long string of letters and numbers (example format: `xxxxxxxxxxxxxxxx...`)
+   - **Application Key** - another long string (example format: `yyyyyyyyyyyyyyyy...`)
 6. If no keys are listed, click **Create API Key** and **Create Application Key**
 7. Copy both strings - you'll paste them during setup
 
@@ -43,7 +43,7 @@ If you have an Ambient Weather station in your yard, this system can read direct
 
 1. While still on ambientweather.net, click **My Devices** (or **Devices** in the nav bar)
 2. Click on your weather station's name
-3. Look for **MAC Address** in the device details (example: `2C:F4:32:24:A9:B3`)
+3. Look for **MAC Address** in the device details (example format: `AA:BB:CC:DD:EE:FF`)
 4. Copy this value - you'll paste it during setup
 
 The MAC address is also printed on a sticker on the back of your weather station's indoor console unit if you can't find it online.
