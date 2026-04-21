@@ -23,7 +23,9 @@ import {
   getFinanceData, updateFinance, getDailyUsage, updateDailyUsage,
   getFertilizerLog, getStatus, getStatusJSON, cleanupOldData,
   getSystemState, setSystemState, acquireRunLock, releaseRunLock,
+  getWateringDatesByZone,
 } from './db/state.js';
+import { loadRestrictions, describeRestrictions } from './core/restrictions.js';
 import { resolveCurrentWeather, resolveYesterdayWeather, resolveForecast } from './weather.js';
 import { getZones, buildProfiles, startMultiZoneRun } from './api/rachio.js';
 import { getLiveRainCheck } from './api/ambient.js';
@@ -98,6 +100,9 @@ async function main() {
     case 'smoke-test':
       await runSmokeTest(flags);
       break;
+    case 'backfill-utility':
+      await runBackfillUtility(flags);
+      return;
     default:
       console.log('');
       console.log('  Taproot');
@@ -118,6 +123,8 @@ async function main() {
       console.log('    status [--json] Show current system status');
       console.log('    web            Start the browser-based UI (127.0.0.1:3000)');
       console.log('    cleanup        Remove data older than 90 days');
+      console.log('    backfill-utility [--days N] [--intervals I,I]');
+      console.log('                   Pull historical meter readings from AquaHawk');
       console.log('');
       process.exit(command === 'help' || command === '--help' ? 0 : 1);
   }
@@ -125,6 +132,34 @@ async function main() {
   // [FIX P1] Exit nonzero when command/verify failed so watchdog catches it
   if (commandFailed) {
     process.exit(2);
+  }
+}
+
+async function runBackfillUtility(flags) {
+  const { backfillUtilityUsage } = await import('./core/utility-backfill.js');
+
+  const daysIdx = flags.indexOf('--days');
+  const days = daysIdx !== -1 ? parseInt(flags[daysIdx + 1], 10) : 730;
+
+  const intervalsIdx = flags.indexOf('--intervals');
+  const intervals = intervalsIdx !== -1
+    ? flags[intervalsIdx + 1].split(',').map(s => s.trim())
+    : ['1 month', '1 day', '1 hour'];
+
+  try {
+    const results = await backfillUtilityUsage({ days, intervals });
+    console.log('');
+    console.log('AquaHawk backfill complete:');
+    for (const [interval, result] of Object.entries(results)) {
+      if (typeof result === 'number') {
+        console.log(`  ${interval.padEnd(10)} ${result} rows`);
+      } else {
+        console.log(`  ${interval.padEnd(10)} FAILED: ${result.error}`);
+      }
+    }
+  } catch (err) {
+    console.error(`Backfill failed: ${err.message}`);
+    process.exit(1);
   }
 }
 
@@ -481,7 +516,15 @@ async function buildContext() {
   // [FIX] Re-read finance after potential reset
   const currentFinance = getFinanceData();
 
+  // Municipal water restrictions (e.g. drought stages) + per-zone rolling-7d history
+  const restrictions = loadRestrictions();
+  const wateringDatesByZone = restrictions.enabled ? getWateringDatesByZone(7) : new Map();
+  if (restrictions.enabled) {
+    log(2, `Restrictions active: ${describeRestrictions(restrictions)}`);
+  }
+
   return {
+    now,
     weather: weatherResult.data,
     weatherSource: weatherResult.source,
     forecast,
@@ -497,6 +540,8 @@ async function buildContext() {
     },
     fertilizerLog,
     lastCoolingTime,
+    restrictions,
+    wateringDatesByZone,
   };
 }
 

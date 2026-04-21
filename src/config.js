@@ -26,6 +26,12 @@ function currentEnvBackedConfig() {
       rachio: {
         apiKey: process.env.RACHIO_API_KEY,
       },
+      aquahawk: {
+        district: process.env.AQUAHAWK_DISTRICT || '',
+        username: process.env.AQUAHAWK_USERNAME || '',
+        password: process.env.AQUAHAWK_PASSWORD || '',
+        accountNumber: process.env.AQUAHAWK_ACCOUNT_NUMBER || '',
+      },
     },
 
     system: {
@@ -72,6 +78,12 @@ const CONFIG = {
     },
     openMeteo: {
       cacheMinutes: 180,
+    },
+    aquahawk: {
+      district: process.env.AQUAHAWK_DISTRICT || '',
+      username: process.env.AQUAHAWK_USERNAME || '',
+      password: process.env.AQUAHAWK_PASSWORD || '',
+      accountNumber: process.env.AQUAHAWK_ACCOUNT_NUMBER || '',
     },
   },
 
@@ -284,6 +296,10 @@ export function reloadConfigFromEnv() {
   CONFIG.api.ambientWeather.appKey = next.api.ambientWeather.appKey;
   CONFIG.api.ambientWeather.macAddress = next.api.ambientWeather.macAddress;
   CONFIG.api.rachio.apiKey = next.api.rachio.apiKey;
+  CONFIG.api.aquahawk.district = next.api.aquahawk.district;
+  CONFIG.api.aquahawk.username = next.api.aquahawk.username;
+  CONFIG.api.aquahawk.password = next.api.aquahawk.password;
+  CONFIG.api.aquahawk.accountNumber = next.api.aquahawk.accountNumber;
 
   CONFIG.system.shadowMode = next.system.shadowMode;
   CONFIG.system.debugLevel = next.system.debugLevel;

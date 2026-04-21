@@ -53,6 +53,7 @@ export async function runDoctor() {
   await checkRachio();
   await checkAmbientWeather();
   await checkOpenMeteo();
+  await checkAquaHawk();
   console.log('');
 
   // 3. Database
@@ -180,6 +181,35 @@ async function checkAmbientWeather() {
     }
   } catch (err) {
     fail('Ambient Weather', err.message);
+    issues++;
+  }
+}
+
+async function checkAquaHawk() {
+  const c = CONFIG.api.aquahawk;
+  if (!c?.district || !c?.username || !c?.password || !c?.accountNumber) {
+    info('AquaHawk', 'not configured (optional)');
+    return;
+  }
+
+  try {
+    const { AquaHawkClient } = await import('./api/aquahawk.js');
+    const client = new AquaHawkClient({
+      district: c.district,
+      username: c.username,
+      password: c.password,
+      accountNumber: c.accountNumber,
+    });
+    await client.authenticate();
+
+    const end = new Date();
+    const start = new Date(end.getTime() - 7 * 86400000);
+    const usage = await client.getUsage({ start, end, interval: '1 day' });
+    const rows = usage.timeseries || [];
+    const totalGal = rows.reduce((s, t) => s + (t.waterUseActual?.gallons ?? t.waterUse?.gallons ?? 0), 0);
+    ok('AquaHawk', `${rows.length} daily readings, ${totalGal.toFixed(0)} gal last 7d`);
+  } catch (err) {
+    fail('AquaHawk', err.message);
     issues++;
   }
 }
