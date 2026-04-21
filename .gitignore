@@ -4,3 +4,6 @@ node_modules/
 *.db-wal
 *.db-shm
 logs/
+
+# Local historical artifacts (not committed - public repo)
+.private/
