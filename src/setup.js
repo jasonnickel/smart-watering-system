@@ -189,8 +189,22 @@ export async function runSetup() {
     startupService = installService ? DEFAULT_STARTUP_SERVICE : 'manual';
   }
 
+  // --- Utility portal ---
+  console.log(`\n${BOLD}6. Utility Meter Portal${RESET} ${DIM}(optional)${RESET}`);
+  console.log(`${DIM}If your municipality uses AquaHawk/UtilityHawk, Taproot can pull`);
+  console.log(`hourly meter readings as ground truth to validate usage + cost.${RESET}`);
+  const useAquahawk = await confirm('Do you have an AquaHawk account?');
+  let aquahawkDistrict = '', aquahawkUser = '', aquahawkPass = '', aquahawkAccount = '';
+  if (useAquahawk) {
+    console.log(`${DIM}District is the subdomain before .aquahawk.us (e.g. City of Golden = goco).${RESET}`);
+    aquahawkDistrict = await ask('AquaHawk district');
+    aquahawkUser = await ask('AquaHawk username (email)');
+    aquahawkPass = await ask('AquaHawk password');
+    aquahawkAccount = await ask('Account number (printed on your water bill)');
+  }
+
   // --- MQTT ---
-  console.log(`\n${BOLD}6. Home Assistant Integration${RESET} ${DIM}(optional)${RESET}`);
+  console.log(`\n${BOLD}7. Home Assistant Integration${RESET} ${DIM}(optional)${RESET}`);
   const useMqtt = await confirm('Connect to an MQTT broker for Home Assistant?');
   let mqttUrl = '';
   if (useMqtt) {
@@ -198,7 +212,7 @@ export async function runSetup() {
   }
 
   // --- Debug ---
-  console.log(`\n${BOLD}7. Debug Level${RESET}`);
+  console.log(`\n${BOLD}8. Debug Level${RESET}`);
   const debugLevel = await ask('Debug level (0=errors, 1=info, 2=debug)', '1');
 
   // --- Write .env ---
@@ -223,6 +237,12 @@ export async function runSetup() {
     '# Notifications',
     `NOTIFICATION_EMAIL=${email}`,
     webhookUrl ? `N8N_WEBHOOK_URL=${webhookUrl}` : '# N8N_WEBHOOK_URL=',
+    '',
+    '# AquaHawk utility meter portal',
+    aquahawkDistrict ? `AQUAHAWK_DISTRICT=${aquahawkDistrict}` : '# AQUAHAWK_DISTRICT=',
+    aquahawkUser ? `AQUAHAWK_USERNAME=${aquahawkUser}` : '# AQUAHAWK_USERNAME=',
+    aquahawkPass ? `AQUAHAWK_PASSWORD=${aquahawkPass}` : '# AQUAHAWK_PASSWORD=',
+    aquahawkAccount ? `AQUAHAWK_ACCOUNT_NUMBER=${aquahawkAccount}` : '# AQUAHAWK_ACCOUNT_NUMBER=',
     '',
     '# MQTT',
     mqttUrl ? `MQTT_BROKER_URL=${mqttUrl}` : '# MQTT_BROKER_URL=',
