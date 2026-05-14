@@ -7,11 +7,11 @@
   "main": "src/cli.js",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/jasonnickel/smart-watering-system.git"
+    "url": "git+https://github.com/jasonnickel-org/smart-watering-system.git"
   },
-  "homepage": "https://github.com/jasonnickel/smart-watering-system#readme",
+  "homepage": "https://github.com/jasonnickel-org/smart-watering-system#readme",
   "bugs": {
-    "url": "https://github.com/jasonnickel/smart-watering-system/issues"
+    "url": "https://github.com/jasonnickel-org/smart-watering-system/issues"
   },
   "keywords": [
     "rachio",
