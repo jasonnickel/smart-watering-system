@@ -8,9 +8,9 @@ Node.js controller for Rachio watering automation. Hardware or live-system actio
 
 ## Model Use
 
-- `claude-opus-4-7`: architecture, hardware/live-control behavior, security-sensitive logic, public CLI contracts, changes touching more than 3 files, unclear bugs, and final review of `claude-haiku` or `claude-sonnet-4-6` output.
-- `claude-sonnet-4-6`: routine implementation, focused test fixes, docs, lint fixes, and narrow clear edits.
-- `claude-haiku`: low-risk summaries, file maps, classifications, and read-only reconnaissance if available.
+- opus tier: architecture, hardware/live-control behavior, security-sensitive logic, public CLI contracts, changes touching more than 3 files, unclear bugs, and final review of haiku tier or sonnet tier output.
+- sonnet tier: routine implementation, focused test fixes, docs, lint fixes, and narrow clear edits.
+- haiku tier: low-risk summaries, file maps, classifications, and read-only reconnaissance if available.
 
 ## Subagent Use
 
