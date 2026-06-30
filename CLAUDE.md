@@ -1,34 +1,6 @@
-# Claude Code Project Rules
-
-Read `/Users/jasonnickel/.claude/CLAUDE.md` first. Use global skills from `/Users/jasonnickel/.claude/skills/` and global agents from `/Users/jasonnickel/.claude/agents/`. This file only adds project-specific guidance.
-
-## Project Context
-
-Node.js controller for Rachio watering automation. Hardware or live-system actions need explicit care and narrow verification.
-
-## Model Use
-
-- opus tier: architecture, hardware/live-control behavior, security-sensitive logic, public CLI contracts, changes touching more than 3 files, unclear bugs, and final review of haiku tier or sonnet tier output.
-- sonnet tier: routine implementation, focused test fixes, docs, lint fixes, and narrow clear edits.
-- haiku tier: low-risk summaries, file maps, classifications, and read-only reconnaissance if available.
-
-## Subagent Use
-
-- `claude-haiku-scout`: read-only file discovery, reference mapping, logs/diffs, test discovery, likely change points.
-- `claude-sonnet-routine-executor`: docs cleanup, test scaffolding, lint/type fixes, and narrow routine edits touching no more than 2 files.
-- `claude-opus-risk-reviewer`: architecture, complex debugging, live-control, security, and public-contract review.
-
-Main session keeps final decisions, architecture, hardware/live-control behavior, security-sensitive work, public contracts, and cross-module reasoning.
-
-## Before Editing
-
-Classify the task as ROUTINE, COMPLEX, ARCHITECTURAL, or SECURITY-SENSITIVE. ROUTINE means smallest correct change. COMPLEX or higher means a short plan first.
-
-## Verification
-
-Report exact files changed, verification command/result, and unresolved risk. Stop after 3 failed verification attempts and reframe root cause.
-
-Known verification commands:
-- `npm test`
-- `npm run lint`
-- `npm run check`
+# smart-watering-system - Claude
+Read global `/Users/jasonnickel/.claude/CLAUDE.md`; use global skills/agents. Local-only notes below.
+Project: Node.js Rachio watering controller. Hardware/live-system behavior needs explicit care and narrow verification.
+Classify before edit. Opus: architecture, live-control/hardware, security, public CLI, >3 files, unclear bugs, final review. Sonnet: routine/test/docs/lint/narrow edits. Haiku: recon.
+Delegation: scout for read-only mapping/tests; routine executor for <=2-file routine edits; risk reviewer for architecture/live-control/security/public contracts. Main keeps final decisions and live-control/security contracts.
+Verify/report: run relevant `npm test`, `npm run lint`, `npm run check`; report files, exact command/result, unresolved risk. Stop after 3 failed attempts and reframe.
